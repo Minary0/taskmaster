@@ -1,0 +1,14 @@
+{
+  "name": "edhec-call-server",
+  "version": "1.0.0",
+  "description": "Serveur d'appels Socket.io pour site EDHEC",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}
