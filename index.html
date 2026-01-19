@@ -666,7 +666,17 @@ button:active { transform: translateY(1px); }
     p.vx = ax * p.speed * dt;
     p.vy = ay * p.speed * dt;
     if (keys.dash && p.stam > 20 && p.dashCooldown <= 0) {
-      p.vx *= 3; p.vy *= 3; p.stam -= 20; p.dashCooldown = 1.2;
+      p.vx *= 3; p.vy *= 3; p.stam -= 20; p.dashCooldown = 1.2; p.iFrames = 0.2;
+      for (let i = 0; i < 8; i++) {
+        state.particles.push({
+          x: p.x - p.vx * 0.1,
+          y: p.y - p.vy * 0.1,
+          vx: -p.vx * 0.2 + (Math.random() - 0.5) * 30,
+          vy: -p.vy * 0.2 + (Math.random() - 0.5) * 30,
+          life: 0.5,
+          color: '#e5e7eb'
+        });
+      }
     }
     p.x += p.vx; p.y += p.vy;
     p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
@@ -807,6 +817,9 @@ button:active { transform: translateY(1px); }
       pr.y += pr.vy * dt;
       pr.life -= dt;
       if (isSolidAt(pr.x, pr.y)) pr.life = 0;
+      if (!settings.lowParticles && Math.random() > 0.4) {
+        state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: '#facc15' });
+      }
       for (let j = state.enemies.length - 1; j >= 0; j--) {
         const e = state.enemies[j];
         const dx = e.x - pr.x;
@@ -826,6 +839,16 @@ button:active { transform: translateY(1px); }
         }
       }
       if (pr.life <= 0) state.projectiles.splice(i, 1);
+    }
+  };
+
+  const updateParticles = (dt) => {
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const prt = state.particles[i];
+      prt.x += prt.vx * dt;
+      prt.y += prt.vy * dt;
+      prt.life -= dt;
+      if (prt.life <= 0) state.particles.splice(i, 1);
     }
   };
 
@@ -916,6 +939,7 @@ button:active { transform: translateY(1px); }
     checkLevelUp();
     updateBars();
     updateMini();
+    updateParticles(dt);
     draw();
     requestAnimationFrame(update);
   };
@@ -947,8 +971,15 @@ button:active { transform: translateY(1px); }
         ctx.fillRect(px, py, TILE, TILE);
       }
     }
-    ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(p.x - camX - 4, p.y - camY - 4, 8, 8);
+    const aim = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    ctx.save();
+    ctx.translate(p.x - camX, p.y - camY);
+    ctx.rotate(aim);
+    ctx.fillStyle = p.iFrames > 0 ? '#f8fafc' : '#f87171';
+    ctx.fillRect(-6, -6, 12, 12);
+    ctx.fillStyle = '#cbd5f5';
+    ctx.fillRect(6, -2, 8, 4);
+    ctx.restore();
     state.interactables.forEach(it => {
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
       else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
@@ -966,6 +997,10 @@ button:active { transform: translateY(1px); }
     });
     ctx.fillStyle = '#facc15';
     state.projectiles.forEach(pr => ctx.fillRect(pr.x - camX - 2, pr.y - camY - 2, 4, 4));
+    state.particles.forEach(prt => {
+      ctx.fillStyle = prt.color || '#facc15';
+      ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
+    });
     if (state.boss) {
       ctx.fillStyle = '#7f1d1d';
       ctx.fillRect(state.boss.x - camX - 8, state.boss.y - camY - 8, 16, 16);
@@ -974,6 +1009,16 @@ button:active { transform: translateY(1px); }
     state.enemies.forEach(e => ctx.fillRect(e.x - camX - 3, e.y - camY - 3, 6, 6));
     ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
     ctx.fillRect(0, 0, W, H);
+
+    // Cursor (screen space)
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(state.mouse.x, state.mouse.y, 6, 0, Math.PI * 2);
+    ctx.moveTo(state.mouse.x - 10, state.mouse.y);
+    ctx.lineTo(state.mouse.x + 10, state.mouse.y);
+    ctx.moveTo(state.mouse.x, state.mouse.y - 10);
+    ctx.lineTo(state.mouse.x, state.mouse.y + 10);
+    ctx.stroke();
   };
 
   const saveGame = () => {
@@ -1097,7 +1142,7 @@ button:active { transform: translateY(1px); }
       btn.textContent = choice.label;
       btn.addEventListener('click', () => {
         choice.onPick();
-        openPanel('dialogue');
+        closeOverlay();
       });
       list.appendChild(btn);
     });
