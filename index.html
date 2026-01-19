@@ -379,6 +379,10 @@ button:active { transform: translateY(1px); }
     player: null,
     companions: [],
     enemies: [],
+    projectiles: [],
+    boss: null,
+    interactables: [],
+    zoneFlow: {},
     drops: [],
     particles: [],
     quests: {},
@@ -387,7 +391,9 @@ button:active { transform: translateY(1px); }
     gold: 0,
     corruptionAbsorbed: 0,
     npcs: [],
-    bestProgress: 0
+    bestProgress: 0,
+    spawnTimer: 0,
+    mouse: { x: W / 2, y: H / 2 }
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -421,6 +427,13 @@ button:active { transform: translateY(1px); }
   };
 
   const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5;
+
+  const isSolidAt = (x, y) => {
+    const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
+    const tx = Math.floor((x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(y / TILE);
+    return isSolid(tileAt(tx, ty, zoneIndex));
+  };
 
   const showToast = (msg) => {
     const el = document.getElementById('toast');
@@ -461,16 +474,25 @@ button:active { transform: translateY(1px); }
     menu() { this.tone(520, 0.08, 'triangle', 0.06); },
     ambient(zone) {
       if (!this.enabled || settings.mute) return;
-      if (this._amb) { this._amb.stop(); this._amb = null; }
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(80 + zone * 12, this.ctx.currentTime);
-      gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      this._amb = osc;
+      this.stopMusic();
+      const base = 90 + zone * 10;
+      const chord = [0, 3, 7];
+      this._music = chord.map((offset, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(base * Math.pow(2, offset / 12), this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.015 + i * 0.005, this.ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        return { osc, gain };
+      });
+    },
+    stopMusic() {
+      if (!this._music) return;
+      this._music.forEach(n => n.osc.stop());
+      this._music = null;
     }
   };
 
@@ -524,6 +546,25 @@ button:active { transform: translateY(1px); }
     });
   };
 
+  const initZoneFlow = (zone) => {
+    const key = `zone-${zone}`;
+    if (state.zoneFlow[key]) return;
+    const orbs = [];
+    for (let i = 0; i < 3; i++) {
+      orbs.push({
+        id: `orb-${zone}-${i}`,
+        type: 'orb',
+        x: zone * MAP * TILE + (12 + i * 6) * TILE,
+        y: (14 + i * 4) * TILE,
+        active: true
+      });
+    }
+    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
+    const gate = { id: `gate-${zone}`, type: 'gate', x: zone * MAP * TILE + (MAP - 4) * TILE, y: 24 * TILE, locked: true };
+    state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, keyDropped: false, bossDefeated: false };
+    state.interactables.push(...orbs, altar, gate);
+  };
+
   const rollItem = (zoneIndex) => {
     const rarityRoll = Math.random();
     let rarity = 'common';
@@ -564,9 +605,9 @@ button:active { transform: translateY(1px); }
       x, y,
       vx: 0,
       vy: 0,
-      hp: 20 + zoneIndex * 12,
-      hpMax: 20 + zoneIndex * 12,
-      atk: 4 + zoneIndex * 2,
+      hp: 50 + zoneIndex * 25,
+      hpMax: 50 + zoneIndex * 25,
+      atk: 6 + zoneIndex * 3,
       def: 1 + zoneIndex,
       state: 'patrol',
       cooldown: 0,
@@ -577,15 +618,15 @@ button:active { transform: translateY(1px); }
   const currentZone = () => clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
 
   const spawnEnemies = () => {
-    if (state.enemies.length >= 24) return;
+    if (state.spawnTimer > 0) return;
+    if (state.enemies.length >= 12) return;
     const zoneIndex = currentZone();
-    for (let i = 0; i < 2; i++) {
-      const x = state.player.x + (Math.random() * 400 - 200);
-      const y = state.player.y + (Math.random() * 300 - 150);
-      const tx = Math.floor((x % (MAP * TILE)) / TILE);
-      const ty = Math.floor(y / TILE);
-      if (!isSolid(tileAt(tx, ty, zoneIndex))) {
+    for (let i = 0; i < 1; i++) {
+      const x = state.player.x + (Math.random() * 500 - 250);
+      const y = state.player.y + (Math.random() * 400 - 200);
+      if (!isSolidAt(x, y) && Math.hypot(x - state.player.x, y - state.player.y) > 120) {
         state.enemies.push(createEnemy(zoneIndex, x, y));
+        state.spawnTimer = 1.2;
       }
     }
   };
@@ -598,7 +639,9 @@ button:active { transform: translateY(1px); }
     document.getElementById('goldText').textContent = state.gold;
     const zone = zones[currentZone()];
     document.getElementById('zoneText').textContent = zone.name;
-    document.getElementById('questText').textContent = `${zone.name} | Corruption ${Math.round(state.zoneCorruption[zone.id] * 100)}%`;
+    const flow = state.zoneFlow[`zone-${zone.id}`];
+    const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
+    document.getElementById('questText').textContent = `Objectif: ${obj}`;
   };
 
   const updateMini = () => {
@@ -649,9 +692,12 @@ button:active { transform: translateY(1px); }
       const dist2 = dx * dx + dy * dy;
       if (dist2 < 180 * 180) {
         const dist = Math.sqrt(dist2) || 1;
-        e.vx = (dx / dist) * 50 * dt;
-        e.vy = (dy / dist) * 50 * dt;
-        e.x += e.vx; e.y += e.vy;
+        e.vx = (dx / dist) * 45 * dt;
+        e.vy = (dy / dist) * 45 * dt;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (!isSolidAt(nx, e.y)) e.x = nx;
+        if (!isSolidAt(e.x, ny)) e.y = ny;
         if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
           const dmg = Math.max(1, e.atk - p.def);
           p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
@@ -660,9 +706,35 @@ button:active { transform: translateY(1px); }
       } else {
         e.vx = Math.sin(state.time + i) * 10 * dt;
         e.vy = Math.cos(state.time + i) * 10 * dt;
-        e.x += e.vx; e.y += e.vy;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (!isSolidAt(nx, e.y)) e.x = nx;
+        if (!isSolidAt(e.x, ny)) e.y = ny;
       }
       e.cooldown = Math.max(0, e.cooldown - dt);
+    }
+  };
+
+  const updateBoss = (dt) => {
+    if (!state.boss) return;
+    const b = state.boss;
+    const p = state.player;
+    const dx = p.x - b.x;
+    const dy = p.y - b.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    b.x += (dx / dist) * 20 * dt;
+    b.y += (dy / dist) * 20 * dt;
+    if (dist < 22 && p.iFrames <= 0) {
+      p.hp -= 12; p.iFrames = 0.8;
+    }
+    b.phase = b.hp < b.hpMax * 0.66 ? 2 : b.hp < b.hpMax * 0.33 ? 3 : 1;
+    if (b.hp <= 0) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) flow.keyDropped = true;
+      showToast('Clé obtenue.');
+      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
+      state.boss = null;
     }
   };
 
@@ -688,23 +760,72 @@ button:active { transform: translateY(1px); }
   const doAttack = () => {
     if (state.player.stam < 10) return;
     state.player.stam -= 10;
-    const range = 24;
-    for (let i = state.enemies.length - 1; i >= 0; i--) {
-      const e = state.enemies[i];
-      const dx = e.x - state.player.x;
-      const dy = e.y - state.player.y;
-      if (dx * dx + dy * dy < range * range) {
-        const dmg = Math.max(1, state.player.atk - e.def);
-        e.hp -= dmg;
-        audio.hit();
-        if (e.hp <= 0) {
-          state.enemies.splice(i, 1);
-          state.player.xp += 10 + currentZone() * 5;
-          state.gold += 3;
-          if (Math.random() > 0.7) addItem(rollItem(currentZone()));
-          if (Math.random() > 0.8) addItem({ type: 'potion', name: 'Potion' });
+    const mx = state.mouse.x;
+    const my = state.mouse.y;
+    const angle = Math.atan2(my - H / 2, mx - W / 2);
+    state.projectiles.push({
+      x: state.player.x,
+      y: state.player.y,
+      vx: Math.cos(angle) * 220,
+      vy: Math.sin(angle) * 220,
+      life: 1.0,
+      dmg: state.player.atk + 4
+    });
+  };
+
+  const castSpell = (slot) => {
+    const p = state.player;
+    const spells = {
+      1: { name: 'Éclat', cost: 20, cd: 4, dmg: 14, speed: 240 },
+      2: { name: 'Nova', cost: 30, cd: 6, dmg: 10, radius: 60 },
+      3: { name: 'Chaînes', cost: 25, cd: 8, slow: 0.5 },
+      4: { name: 'Furie', cost: 35, cd: 12, buff: 3 }
+    };
+    const spell = spells[slot];
+    if (!spell || p.skillCooldown > 0 || p.mana < spell.cost) return;
+    p.mana -= spell.cost;
+    p.skillCooldown = spell.cd;
+    if (slot === 1) {
+      const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * spell.speed, vy: Math.sin(angle) * spell.speed, life: 1.2, dmg: spell.dmg + p.stats.spi });
+    } else if (slot === 2) {
+      state.enemies.forEach(e => {
+        const dx = e.x - p.x; const dy = e.y - p.y;
+        if (dx * dx + dy * dy < spell.radius * spell.radius) e.hp -= spell.dmg + p.stats.spi;
+      });
+    } else if (slot === 3) {
+      state.enemies.forEach(e => { e.slow = 1.5; });
+    } else if (slot === 4) {
+      p.atk += 5; p.def += 2; setTimeout(() => { p.atk -= 5; p.def -= 2; }, spell.buff * 1000);
+    }
+  };
+
+  const updateProjectiles = (dt) => {
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+      const pr = state.projectiles[i];
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      pr.life -= dt;
+      if (isSolidAt(pr.x, pr.y)) pr.life = 0;
+      for (let j = state.enemies.length - 1; j >= 0; j--) {
+        const e = state.enemies[j];
+        const dx = e.x - pr.x;
+        const dy = e.y - pr.y;
+        if (dx * dx + dy * dy < 12 * 12) {
+          e.hp -= Math.max(1, pr.dmg - e.def);
+          audio.hit();
+          pr.life = 0;
+          if (e.hp <= 0) {
+            state.enemies.splice(j, 1);
+            state.player.xp += 10 + currentZone() * 5;
+            state.gold += 3;
+            if (Math.random() > 0.85) addItem(rollItem(currentZone()));
+            if (Math.random() > 0.9) addItem({ type: 'potion', name: 'Potion' });
+          }
+          break;
         }
       }
+      if (pr.life <= 0) state.projectiles.splice(i, 1);
     }
   };
 
@@ -722,6 +843,31 @@ button:active { transform: translateY(1px); }
 
   const onInteract = () => {
     const zone = currentZone();
+    initZoneFlow(zone);
+    const flow = state.zoneFlow[`zone-${zone}`];
+    const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.hypot(i.x - state.player.x, i.y - state.player.y) < 24);
+    if (orb) {
+      orb.active = false;
+      flow.orbsDestroyed += 1;
+      showToast(`Noyau détruit ${flow.orbsDestroyed}/3`);
+      if (flow.orbsDestroyed >= 3) {
+        flow.altar.active = true;
+        showToast('L\'autel s\'éveille...');
+      }
+      return;
+    }
+    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < 30 && !state.boss) {
+      state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
+      audio.menu();
+      showToast('Le Seigneur émerge...');
+      return;
+    }
+    if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < 30) {
+      flow.gate.locked = false;
+      showToast('La porte s\'ouvre.');
+      state.player.x = (zone + 1) * MAP * TILE + 20 * TILE;
+      return;
+    }
     const nearNpc = state.npcs.find(npc => {
       const dx = npc.x - state.player.x;
       const dy = npc.y - state.player.y;
@@ -763,7 +909,10 @@ button:active { transform: translateY(1px); }
     updatePlayer(dt);
     updateEnemies(dt);
     updateCompanions(dt);
+    updateBoss(dt);
+    state.spawnTimer = Math.max(0, state.spawnTimer - dt);
     spawnEnemies();
+    updateProjectiles(dt);
     checkLevelUp();
     updateBars();
     updateMini();
@@ -800,6 +949,13 @@ button:active { transform: translateY(1px); }
     }
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(p.x - camX - 4, p.y - camY - 4, 8, 8);
+    state.interactables.forEach(it => {
+      if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
+      else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
+      else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
+      else return;
+      ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+    });
     state.companions.forEach(c => {
       ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
       ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
@@ -808,6 +964,12 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
       ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
     });
+    ctx.fillStyle = '#facc15';
+    state.projectiles.forEach(pr => ctx.fillRect(pr.x - camX - 2, pr.y - camY - 2, 4, 4));
+    if (state.boss) {
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(state.boss.x - camX - 8, state.boss.y - camY - 8, 16, 16);
+    }
     ctx.fillStyle = '#ef4444';
     state.enemies.forEach(e => ctx.fillRect(e.x - camX - 3, e.y - camY - 3, 6, 6));
     ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
@@ -842,9 +1004,15 @@ button:active { transform: translateY(1px); }
     document.getElementById('credits').style.display = 'none';
   };
 
-  const openPanel = (id) => {
+  const openPanel = (id, pause = true) => {
     hideAll();
     document.getElementById(id).style.display = 'flex';
+    state.paused = pause && state.running;
+  };
+
+  const closeOverlay = () => {
+    hideAll();
+    state.paused = false;
   };
 
   const renderInventory = () => {
@@ -1012,10 +1180,10 @@ button:active { transform: translateY(1px); }
   document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
   document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
   document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
-  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu'));
-  document.getElementById('optBack').addEventListener('click', () => openPanel('menu'));
-  document.getElementById('dialogueClose').addEventListener('click', () => openPanel('menu'));
-  document.getElementById('shopClose').addEventListener('click', () => openPanel('menu'));
+  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('optBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
+  document.getElementById('shopClose').addEventListener('click', closeOverlay);
   document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
   document.getElementById('saveBtn').addEventListener('click', saveGame);
   document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
@@ -1064,6 +1232,10 @@ button:active { transform: translateY(1px); }
     if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
     if (e.key === 'c') { openPanel('character'); renderCharacter(); }
     if (e.key === 'q') { openPanel('journal'); renderJournal(); }
+    if (e.key === '1') castSpell(1);
+    if (e.key === '2') castSpell(2);
+    if (e.key === '3') castSpell(3);
+    if (e.key === '4') castSpell(4);
     if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
   });
 
@@ -1077,6 +1249,11 @@ button:active { transform: translateY(1px); }
     if (e.key === 'Shift') keys.dash = false;
   });
 
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
   canvas.addEventListener('click', () => { if (state.running) doAttack(); });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
@@ -1143,7 +1320,7 @@ button:active { transform: translateY(1px); }
 
   loadSettings();
   resize();
-  openPanel('menu');
+  openPanel('menu', false);
   requestAnimationFrame(update);
 
   // PokiSDK hooks (optional)
