@@ -17,869 +17,980 @@ Fichiers nécessaires:
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Veyl Reforged - L'Écho des Cendres</title>
+<title>Veyl: Brume-Couronne</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <style>
 :root {
-  --bg-dark: #050505;
-  --ui-bg: rgba(18, 18, 24, 0.95);
-  --ui-border: #4a4a5e;
+  --bg: #050608;
+  --panel: rgba(10, 12, 18, 0.95);
+  --border: #43495c;
   --accent: #d4af37;
+  --text: #e6e8ee;
+  --dim: #8b93a8;
   --danger: #ff4d4d;
   --rare: #4d94ff;
   --epic: #a335ee;
   --legend: #ff8000;
-  --text-main: #e0e0e0;
-  --text-dim: #888;
 }
-
-* { box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; }
-
-body {
-  margin: 0; padding: 0;
-  background-color: var(--bg-dark);
-  color: var(--text-main);
-  font-family: "Georgia", serif;
-  overflow: hidden;
-  width: 100vw; height: 100vh;
-}
-
-#gameCanvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-}
-
-.ui-layer {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none;
-  display: flex; flex-direction: column;
-}
-
-#hud {
-  padding: 16px;
-  display: flex; justify-content: space-between; align-items: flex-start;
-}
-.stat-bars { width: 260px; pointer-events: auto; }
-.bar-wrap { position: relative; height: 14px; background: #222; margin-bottom: 6px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
-.bar-fill { height: 100%; transition: width 0.2s; }
-.hp-fill { background: linear-gradient(90deg, #8b0000, #ff3333); }
-.sta-fill { background: linear-gradient(90deg, #8b6500, #ffcc00); }
-.mana-fill { background: linear-gradient(90deg, #00338b, #3388ff); }
-.bar-text { position: absolute; width: 100%; text-align: center; font-size: 10px; line-height: 14px; text-shadow: 1px 1px 0 #000; font-weight: bold; }
-
-.minimap-container {
-  background: #000; border: 2px solid var(--ui-border);
-  width: 140px; height: 140px; position: relative;
-  opacity: 0.8;
-}
-
-#quest-tracker {
-  position: absolute; top: 170px; right: 16px;
-  width: 260px; text-align: right;
-  text-shadow: 1px 1px 2px #000;
-}
-#quest-title { color: var(--accent); font-weight: bold; margin-bottom: 4px; letter-spacing: 1px; }
-#quest-desc { font-size: 14px; color: #ccc; }
-
-.overlay {
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: none; align-items: center; justify-content: center;
-  pointer-events: auto;
-  z-index: 100;
-  backdrop-filter: blur(4px);
-}
-
-.panel {
-  background: var(--ui-bg);
-  border: 1px solid var(--ui-border);
-  border-radius: 4px;
-  padding: 20px;
-  max-width: 860px; width: 92%; max-height: 90%;
-  box-shadow: 0 0 20px rgba(0,0,0,0.8);
-  overflow-y: auto;
-  display: flex; flex-direction: column;
-}
-
-h1, h2, h3 { margin: 0 0 12px 0; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
-p { font-size: 14px; line-height: 1.5; color: #ccc; margin-bottom: 10px; }
-
-button {
-  background: linear-gradient(to bottom, #3a3a4a, #2a2a3a);
-  border: 1px solid var(--ui-border);
-  color: white; padding: 10px 20px;
-  cursor: pointer; font-size: 14px; margin: 5px;
-  transition: all 0.1s; text-transform: uppercase;
-}
-button:hover { border-color: var(--accent); color: var(--accent); background: #333; }
+* { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
+html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; font-family: "Georgia", serif; }
+#wrap { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); }
+canvas { image-rendering: pixelated; background: #020305; border: 2px solid #111; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+.overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); pointer-events: auto; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; max-width: 900px; width: 92%; max-height: 90%; overflow: auto; box-shadow: 0 0 25px rgba(0,0,0,0.8); }
+button { background: linear-gradient(#2b2f3d, #1e2230); border: 1px solid var(--border); color: var(--text); padding: 8px 14px; margin: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
+button:hover { border-color: var(--accent); color: var(--accent); }
 button:active { transform: translateY(1px); }
-button.disabled { opacity: 0.5; cursor: default; }
+.hidden { display: none !important; }
 
-.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 8px; margin-top: 10px; }
-.slot {
-  width: 50px; height: 50px; background: #111; border: 1px solid #444;
-  position: relative; cursor: pointer; text-align: center; font-size: 12px; padding-top: 8px;
-}
-.slot:hover { border-color: var(--accent); }
+#hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+#hud .panel { pointer-events: auto; }
+.bar { height: 10px; background: #111623; border: 1px solid #2a3144; border-radius: 5px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #7c2d12, #dc2626); }
+.bar.sta > span { background: linear-gradient(90deg, #854d0e, #f59e0b); }
+.bar.mana > span { background: linear-gradient(90deg, #1e3a8a, #3b82f6); }
+.small { font-size: 12px; color: var(--dim); }
 
-#tooltip {
-  position: absolute; display: none;
-  background: rgba(10,10,15,0.98); border: 1px solid #666;
-  padding: 10px; width: 220px; pointer-events: none; z-index: 200;
-  font-size: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-}
+#minimap { width: 120px; height: 120px; border: 1px solid var(--border); background: #0b0f16; }
 
-#dialogue-box {
-  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-  width: 820px; max-width: 95%;
-  background: linear-gradient(to top, #111, #1a1a24);
-  border: 2px solid var(--accent);
-  padding: 16px; display: none; pointer-events: auto;
-}
-#npc-name { color: var(--accent); font-weight: bold; margin-bottom: 8px; }
-#dialogue-text { font-size: 16px; margin-bottom: 12px; min-height: 40px; }
-#dialogue-choices { display: flex; gap: 10px; flex-wrap: wrap; }
+#toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
+#toast.show { opacity: 1; }
 
-#mobile-controls { display: none; pointer-events: none; }
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabs button.active { border-color: var(--accent); }
+.list { display: grid; gap: 8px; }
+.item { background: rgba(16,20,28,0.8); border: 1px solid #2a3144; border-radius: 6px; padding: 8px; }
+.tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.tag.common { background: #1f2937; }
+.tag.rare { background: #1e40af; }
+.tag.epic { background: #6d28d9; }
+.tag.legendary { background: #b45309; }
+
+#mobile { position: absolute; inset: 0; display: none; pointer-events: none; }
+#joy { position: absolute; left: 16px; bottom: 16px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid #2a3144; background: rgba(12,16,24,0.6); pointer-events: auto; }
+#joyDot { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(120,130,150,0.8); left: 42px; top: 42px; }
+#mobBtns { position: absolute; right: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, 60px); gap: 8px; pointer-events: auto; }
+.mobBtn { width: 60px; height: 60px; border-radius: 50%; background: rgba(25,30,40,0.7); border: 1px solid #2a3144; display: grid; place-items: center; font-size: 11px; }
+
 @media (hover: none) and (pointer: coarse) {
-  #mobile-controls { display: block; position: absolute; inset: 0; }
-  .touch-btn {
-    position: absolute; width: 64px; height: 64px; border-radius: 50%;
-    background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3);
-    pointer-events: auto; display: flex; align-items: center; justify-content: center;
-    color: white; font-weight: bold; font-size: 12px;
-  }
-  #joystick-area { position: absolute; bottom: 48px; left: 48px; width: 120px; height: 120px; pointer-events: auto; }
-  #btn-atk { bottom: 60px; right: 40px; width: 80px; height: 80px; background: rgba(200, 50, 50, 0.3); }
-  #btn-dash { bottom: 40px; right: 140px; }
-  #btn-interact { bottom: 160px; right: 50px; background: rgba(212, 175, 55, 0.3); }
-  #btn-inv { top: 16px; right: 16px; width: 40px; height: 40px; }
-  #btn-pause { top: 16px; right: 64px; width: 40px; height: 40px; }
+  #mobile { display: block; }
 }
-
-body { cursor: crosshair; }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-
-<div id="ui-layer" class="ui-layer">
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+<div id="ui">
   <div id="hud">
-    <div class="stat-bars">
-      <div class="bar-wrap"><div id="hp-bar" class="bar-fill hp-fill" style="width: 100%"></div><div class="bar-text"><span id="hp-val">100</span>/<span id="hp-max">100</span></div></div>
-      <div class="bar-wrap"><div id="sta-bar" class="bar-fill sta-fill" style="width: 100%"></div><div class="bar-text">ENDURANCE</div></div>
-      <div class="bar-wrap"><div id="mana-bar" class="bar-fill mana-fill" style="width: 100%"></div><div class="bar-text">MANA</div></div>
-      <div style="display:flex; justify-content:space-between; font-size:12px; color:#aaa; margin-top:4px;">
-        <span>LVL <span id="lvl-val" style="color:white">1</span></span>
-        <span>OR: <span id="gold-val" style="color:var(--accent)">0</span></span>
-      </div>
+    <div class="panel">
+      <div>PV</div>
+      <div class="bar"><span id="hpBar"></span></div>
+      <div>Endurance</div>
+      <div class="bar sta"><span id="staBar"></span></div>
+      <div>Mana</div>
+      <div class="bar mana"><span id="manaBar"></span></div>
+      <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
     </div>
-    <div id="quest-tracker">
-      <div id="quest-title">Objectif</div>
-      <div id="quest-desc">Explorer les Marais Cendrés</div>
-    </div>
-  </div>
-
-  <div id="dialogue-box">
-    <div id="npc-name">Nom NPC</div>
-    <div id="dialogue-text">Texte de dialogue...</div>
-    <div id="dialogue-choices"></div>
-  </div>
-
-  <div id="notifications" style="position: absolute; top: 100px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px;"></div>
-</div>
-
-<div id="menu-main" class="overlay" style="display: flex;">
-  <div class="panel" style="text-align: center; border: 2px solid var(--accent);">
-    <h1 style="font-size: 38px; margin-bottom: 6px;">VEYL REFORGED</h1>
-    <h2 style="font-size: 14px; color: #888;">L'Écho des Cendres</h2>
-    <p style="margin: 20px 0;">RPG Dark Fantasy - Canvas</p>
-    <button id="btn-new">Nouvelle Partie</button>
-    <button id="btn-continue">Continuer</button>
-    <button id="btn-options">Options</button>
-    <div style="margin-top:20px; font-size:11px; color:#555;">
-      ZQSD / Flèches : Bouger<br />Souris : Viser & Tirer<br />E : Interagir | I : Inventaire | SHIFT : Dash
+    <div class="panel">
+      <div id="zoneText">Zone</div>
+      <div id="questText" class="small">Objectif</div>
+      <canvas id="minimap" width="120" height="120"></canvas>
     </div>
   </div>
-</div>
 
-<div id="menu-char-select" class="overlay">
-  <div class="panel">
-    <h1>Choix du Marqué</h1>
-    <div id="class-cards" style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;"></div>
+  <div id="menu" class="overlay" style="display:flex;">
+    <div class="panel" style="text-align:center;">
+      <h1>Veyl: Brume-Couronne</h1>
+      <p>RPG dark-fantasy jouable en navigateur, hors-ligne.</p>
+      <button id="newBtn">Nouvelle partie</button>
+      <button id="contBtn">Continuer</button>
+      <button id="optBtn">Options</button>
+      <button id="creditsBtn">Crédits</button>
+      <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · C: perso · Q: quêtes · ESC: pause</div>
+    </div>
   </div>
-</div>
 
-<div id="menu-inventory" class="overlay">
-  <div class="panel">
-    <div style="display:flex; justify-content:space-between;">
+  <div id="classMenu" class="overlay">
+    <div class="panel">
+      <h2>Choix du Marqué</h2>
+      <div id="classList" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+    </div>
+  </div>
+
+  <div id="pauseMenu" class="overlay">
+    <div class="panel" style="text-align:center;">
+      <h2>Pause</h2>
+      <button id="resumeBtn">Reprendre</button>
+      <button id="saveBtn">Sauvegarder</button>
+      <button id="pauseOptBtn">Options</button>
+      <button id="quitBtn">Quitter</button>
+    </div>
+  </div>
+
+  <div id="inventory" class="overlay">
+    <div class="panel">
       <h2>Inventaire</h2>
-      <button id="btn-close-inv">Fermer (I)</button>
-    </div>
-    <div style="display:flex; gap:20px;">
-      <div style="flex:1;">
-        <h3>Stats</h3>
-        <div id="stats-display" style="font-size:12px; line-height:1.6; color:#ddd;"></div>
+      <div class="tabs">
+        <button data-tab="bag" class="active">Sac</button>
+        <button data-tab="equip">Équipement</button>
+        <button data-tab="craft">Artisanat</button>
       </div>
-      <div style="flex:2;">
-        <h3>Sac</h3>
-        <div id="inv-container" class="inv-grid"></div>
+      <div id="bagTab" class="list"></div>
+      <div id="equipTab" class="list hidden"></div>
+      <div id="craftTab" class="hidden">
+        <p>Forge: améliore arme/armure avec matériaux.</p>
+        <button id="forgeBtn">Forger (+1)</button>
+        <p>Enchantement: reroll d'un affixe.</p>
+        <button id="enchantBtn">Enchanter</button>
       </div>
     </div>
   </div>
+
+  <div id="character" class="overlay">
+    <div class="panel">
+      <h2>Fiche Personnage</h2>
+      <div id="statsPanel"></div>
+      <h3>Points à répartir</h3>
+      <div id="pointsPanel"></div>
+      <h3>Talents</h3>
+      <div id="talentsPanel" class="list"></div>
+    </div>
+  </div>
+
+  <div id="journal" class="overlay">
+    <div class="panel">
+      <h2>Journal</h2>
+      <div class="tabs">
+        <button data-tab="quests" class="active">Quêtes</button>
+        <button data-tab="lore">Chroniques</button>
+      </div>
+      <div id="questTab" class="list"></div>
+      <div id="loreTab" class="list hidden"></div>
+    </div>
+  </div>
+
+  <div id="options" class="overlay">
+    <div class="panel">
+      <h2>Options</h2>
+      <button id="toggleShake"></button>
+      <button id="toggleParticles"></button>
+      <button id="toggleMute"></button>
+      <button id="textSize"></button>
+      <button id="optBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="credits" class="overlay">
+    <div class="panel">
+      <h2>Crédits</h2>
+      <p>Design & développement: vous.</p>
+      <p>Mythes de Veyl, serments brisés, tragédie héroïque.</p>
+      <button id="creditsBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="mobile">
+    <div id="joy"><div id="joyDot"></div></div>
+    <div id="mobBtns">
+      <div class="mobBtn" data-act="attack">ATK</div>
+      <div class="mobBtn" data-act="interact">E</div>
+      <div class="mobBtn" data-act="inventory">INV</div>
+      <div class="mobBtn" data-act="pause">||</div>
+    </div>
+  </div>
 </div>
-
-<div id="tooltip"></div>
-
-<div id="mobile-controls">
-  <div id="joystick-area"></div>
-  <div id="btn-atk" class="touch-btn">ATK</div>
-  <div id="btn-dash" class="touch-btn">DASH</div>
-  <div id="btn-interact" class="touch-btn">MAIN</div>
-  <div id="btn-inv" class="touch-btn">I</div>
-  <div id="btn-pause" class="touch-btn">II</div>
-</div>
-
 <script>
 (() => {
   'use strict';
 
-  const CONSTANTS = {
-    CHUNK_SIZE: 32,
-    TILE_SIZE: 40,
-    VIEW_DIST: 900,
-    COLORS: {
-      bg: '#050505',
-      wall: '#1a1a1a',
-      floor1: '#2a2a35',
-      floor2: '#22222a',
-      accent: '#d4af37'
-    },
-    ZONES: [
-      { id: 0, name: "Marais Cendrés", color: '#1e261e', fog: 'rgba(20, 30, 20, 0.4)', danger: 1 },
-      { id: 1, name: "Bois du Voile Noir", color: '#0a0a14', fog: 'rgba(10, 10, 25, 0.5)', danger: 2 },
-      { id: 2, name: "Ruines de Caldris", color: '#2b1d1d', fog: 'rgba(40, 10, 10, 0.3)', danger: 3 },
-      { id: 3, name: "Cratère des Hymnes", color: '#221133', fog: 'rgba(30, 0, 50, 0.4)', danger: 4 },
-      { id: 4, name: "Citadelle Astrale", color: '#111111', fog: 'rgba(0, 0, 0, 0.7)', danger: 5 }
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const mini = document.getElementById('minimap');
+  const mctx = mini.getContext('2d');
+
+  const STORAGE_KEY = 'veyl_save_v3';
+  const SETTINGS_KEY = 'veyl_settings_v3';
+
+  const W = 960;
+  const H = 540;
+  const TILE = 16;
+  const MAP = 64;
+
+  const settings = {
+    shake: true,
+    lowParticles: false,
+    mute: false,
+    textSize: 1
+  };
+
+  const zones = [
+    { id: 0, name: 'Les Marais Cendrés', danger: 1, fog: 0.4 },
+    { id: 1, name: 'Bois du Voile Noir', danger: 2, fog: 0.5 },
+    { id: 2, name: 'Ruines de Caldris', danger: 3, fog: 0.45 },
+    { id: 3, name: 'Cratère des Hymnes', danger: 4, fog: 0.6 },
+    { id: 4, name: 'Citadelle de l\'Astral-Morne', danger: 5, fog: 0.7 }
+  ];
+
+  const classes = {
+    blade: { name: 'Lame', hp: 120, stam: 120, mana: 40, atk: 12, def: 6, crit: 0.05, speed: 120, skill: 'Frappe du Serment' },
+    arcanist: { name: 'Arcaniste', hp: 90, stam: 80, mana: 140, atk: 10, def: 3, crit: 0.08, speed: 110, skill: 'Lance-Voile' },
+    hunter: { name: 'Traqueur', hp: 100, stam: 110, mana: 70, atk: 11, def: 4, crit: 0.12, speed: 130, skill: 'Traque Cendrée' }
+  };
+
+  const talentTrees = {
+    blade: [
+      'Lame scellée (+5% dégâts)', 'Rage contenue (+10 stamina)', 'Frappe lourde (+5% crit)',
+      'Serment ancien (+10 PV)', 'Élan implacable (+1 vitesse)', 'Duel de l\'ombre (+5% dégâts boss)',
+      'Riposte des cendres (+5 défense)', 'Coup d\'abîme (+1 dash)', 'Rappel du fer (+10 PV)',
+      'Frappe du serment II (skill améliorée)'
+    ],
+    arcanist: [
+      'Voile fin (+10 mana)', 'Éclats froids (+5% dégâts mag.)', 'Rune vive (+5% crit)',
+      'Clarté noire (+1 regen mana)', 'Marée astrale (+10 mana)', 'Orbe errant (+1 projectile)',
+      'Décharge (+5% dégâts élite)', 'Spirale du pacte (+1 dash)', 'Voile apaisé (+10 PV)',
+      'Lance-Voile II (skill améliorée)'
+    ],
+    hunter: [
+      'Pisteur (+5% crit)', 'Corde rapide (+1 vitesse)', 'Tir fendu (+5% dégâts)',
+      'Foulée noire (+10 stamina)', 'Précision (crit +5%)', 'Fleur de cendres (+1 projectile)',
+      'Étreinte brumeuse (+5% dégâts boss)', 'Pas du voleur (+1 dash)', 'Souffle vif (+10 PV)',
+      'Traque Cendrée II (skill améliorée)'
     ]
   };
 
-  const CLASSES = [
-    { id:'blade', name:'Lame du Serment', hp:140, mp:40, atk:18, def:8, spd:220, color:'#d4af37', desc:'Guerrier lourd, résistant à la corruption.' },
-    { id:'arcanist', name:'Éclat d’Astral', hp:90, mp:140, atk:22, def:3, spd:200, color:'#4361ee', desc:'Mage capable de briser la brume par l’esprit.' },
-    { id:'tracker', name:'Traqueur Cendré', hp:110, mp:70, atk:20, def:5, spd:250, color:'#4cc9f0', desc:'Agile et rapide, frappe depuis les ténèbres.' }
+  const uniqueItems = [
+    { id: 'u1', name: 'Épée de la Mère-Noyée', slot: 'weapon', desc: 'La lame suinte une eau qui ne reflète rien.' },
+    { id: 'u2', name: 'Corne du Cerf Sans Visage', slot: 'amulet', desc: 'Une prière gravée retourne vers l\'auteur.' },
+    { id: 'u3', name: 'Codex de Caldris', slot: 'ring', desc: 'Chaque page efface un souvenir pour en sauver un autre.' },
+    { id: 'u4', name: 'Chœur Fêlé', slot: 'weapon', desc: 'La vibration blesse l\'âme avant la chair.' },
+    { id: 'u5', name: 'Couronne du Serment Fendu', slot: 'helm', desc: 'Le poids d\'un choix impossible.' },
+    { id: 'u6', name: 'Manteau d\'Elyne', slot: 'armor', desc: 'Les fils gardent la chaleur des vœux.' },
+    { id: 'u7', name: 'Gants du Porte-Cendre', slot: 'gloves', desc: 'Le feu y survit sans brûler.' },
+    { id: 'u8', name: 'Sceau du Sanctuaire', slot: 'amulet', desc: 'Un serment scellé par la brume.' },
+    { id: 'u9', name: 'Bottes du Marqué', slot: 'boots', desc: 'Chaque pas vole un fragment de brume.' },
+    { id: 'u10', name: 'Lanterne d\'Azar', slot: 'ring', desc: 'La flamme éclaire les mensonges.' },
+    { id: 'u11', name: 'Arc du Voile Noir', slot: 'weapon', desc: 'Les flèches suivent la peur.' },
+    { id: 'u12', name: 'Armure d\'Astral-Morne', slot: 'armor', desc: 'Forgée pour un roi qui n\'a jamais régné.' }
   ];
 
-  const STORAGE_KEY = 'veyl_reforged_save_v2';
+  const quests = [
+    { id: 'q1', title: 'Serment des Cendres', type: 'main', zone: 0, desc: 'Quitter le sanctuaire en ruine.' },
+    { id: 'q2', title: 'Noyaux de Brume', type: 'main', zone: 0, desc: 'Détruire 3 noyaux dans les Marais.' },
+    { id: 'q3', title: 'La Mère-Noyée', type: 'main', zone: 0, desc: 'Vaincre le boss des Marais.' },
+    { id: 'q4', title: 'Le Voile Noir', type: 'main', zone: 1, desc: 'Trouver Elyne, l\'Éclat Brisé.' },
+    { id: 'q5', title: 'Cerf Sans Visage', type: 'main', zone: 1, desc: 'Vaincre le Cerf.' },
+    { id: 'q6', title: 'Sceaux de Caldris', type: 'main', zone: 2, desc: 'Récupérer 3 sceaux.' },
+    { id: 'q7', title: 'Archiviste Creux', type: 'main', zone: 2, desc: 'Vaincre l\'Archiviste.' },
+    { id: 'q8', title: 'Hymnes brisés', type: 'main', zone: 3, desc: 'Apaiser 3 autels du Cratère.' },
+    { id: 'q9', title: 'Chœur des Fêlés', type: 'main', zone: 3, desc: 'Vaincre le Chœur.' },
+    { id: 'q10', title: 'Roi du Serment Fendu', type: 'main', zone: 4, desc: 'Confronter la Citadelle.' },
+    { id: 's1', title: 'Souvenir fendu', type: 'side', zone: 0, desc: 'Récupérer une bague perdue.' },
+    { id: 's2', title: 'Marchand de cendres', type: 'side', zone: 0, desc: 'Apporter 5 matériaux au marchand.' },
+    { id: 's3', title: 'Chants étouffés', type: 'side', zone: 1, desc: 'Libérer un enfant du voile.' },
+    { id: 's4', title: 'La dette d\'Elyne', type: 'side', zone: 1, desc: 'Choisir d\'aider Elyne.' },
+    { id: 's5', title: 'Cendres du Porteur', type: 'side', zone: 2, desc: 'Trouver Kael.' },
+    { id: 's6', title: 'Cartes brisées', type: 'side', zone: 2, desc: 'Assembler une carte antique.' },
+    { id: 's7', title: 'Litanie du Cratère', type: 'side', zone: 3, desc: 'Sauver un chœur errant.' },
+    { id: 's8', title: 'La voix de pierre', type: 'side', zone: 3, desc: 'Écouter l\'autel silencieux.' },
+    { id: 's9', title: 'Serment des Deux', type: 'side', zone: 4, desc: 'Unir Elyne et Kael.' },
+    { id: 's10', title: 'Le prix du pouvoir', type: 'side', zone: 4, desc: 'Refuser une offrande.' }
+  ];
 
+  const lore = [
+    'La Brume-Couronne naquit d\'un serment sans témoin.',
+    'Les Marqués peuvent porter la corruption sans se briser.',
+    'Le Sanctuaire d\'Aran se dresse au bord de l\'oubli.',
+    'Les morts reviennent creux, privés de mémoire.',
+    'Les Hymnes du Cratère apaisaient jadis les étoiles.',
+    'L\'Ordre de Caldris jurait de garder la vérité.',
+    'Elyne a perdu son éclat dans le Bois Noir.',
+    'Kael est né d\'une prière qui n\'a jamais répondu.',
+    'La Mère-Noyée nourrit la brume avec des promesses.',
+    'Le Cerf Sans Visage garde les chemins de retour.',
+    'L\'Archiviste Creux récite des noms effacés.',
+    'Le Chœur des Fêlés chante pour refermer le ciel.',
+    'Le Roi du Serment Fendu scella la couronne sur lui-même.',
+    'Les anneaux d\'Azar capturent les mensonges.',
+    'Les autels de pierre parlent aux Marqués.',
+    'Les ruines de Caldris sont des pages brisées.',
+    'Chaque noyau détruit réduit la corruption du monde.',
+    'La brume murmure des destinées alternatives.',
+    'Les druides du Voile Noir n\'ont plus de voix.',
+    'La Citadelle Astral-Morne flotte au-dessus d\'une mer vide.',
+    'Les compagnons partagent le fardeau du serment.',
+    'La Couronne promet une paix impossible.',
+    'La Purification exige un sacrifice.',
+    'Le pouvoir corrompt même les Marqués.',
+    'Les pierres du Cratère vibrent aux pleurs du ciel.',
+    'La lueur des sanctuaires repousse les creux.',
+    'Les armes uniques sont des fragments de mythes.',
+    'Les seigneurs de zone sont nés du pacte originel.',
+    'Une étoile se reflète dans chaque lac des Marais.',
+    'Le dernier serment est toujours personnel.'
+  ];
+
+  const npcs = [
+    { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
+    { name: 'Mara des Lisières', role: 'Herboriste', zone: 0, dialog: 'La brume ronge mes récoltes. Prends ce remède.' },
+    { name: 'Serek le Tisseur', role: 'Forgeron', zone: 0, dialog: 'Les métaux chantent encore si on sait écouter.' },
+    { name: 'Nys la Muette', role: 'Oracle', zone: 0, dialog: 'Les marais te veulent vivant, pour l\'instant.' },
+    { name: 'Elyne, l\'Éclat Brisé', role: 'Compagnon', zone: 1, dialog: 'Si je te suis, promets-moi de ne pas mentir.' },
+    { name: 'Kael, le Porte-Cendre', role: 'Compagnon', zone: 2, dialog: 'Je marche pour éteindre ce feu, ou m\'y perdre.' },
+    { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
+    { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
+    { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
+    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' }
+  ];
+
+  const state = {
+    running: false,
+    paused: false,
+    time: 0,
+    seed: Math.floor(Math.random() * 1e9),
+    zoneCorruption: [1, 1, 1, 1, 1],
+    clearedZones: 0,
+    player: null,
+    companions: [],
+    enemies: [],
+    drops: [],
+    particles: [],
+    quests: {},
+    loreFound: {},
+    materials: 0,
+    gold: 0,
+    corruptionAbsorbed: 0
+  };
+
+  const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
+  let joyActive = false;
+  const joyVec = { x: 0, y: 0 };
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const rand = (seed) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0xffffffff;
+    };
+  };
+
+  const noise = (x, y, seed) => {
+    let h = x * 374761393 + y * 668265263 + seed * 1442695041;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+  };
+
+  const tileAt = (tx, ty, zone) => {
+    if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
+    const n = noise(tx, ty, state.seed + zone * 77);
+    if (n < 0.08) return 2; // water
+    if (n < 0.13) return 3; // rock
+    if (n < 0.19 && zone !== 3) return 4; // tree
+    if (n < 0.23 && zone >= 2) return 5; // ruins
+    return 0; // ground
+  };
+
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5;
+
+  const showToast = (msg) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 1400);
+  };
+
+  const createPlayer = (clsKey) => {
+    const base = classes[clsKey];
+    return {
+      classKey: clsKey,
+      name: base.name,
+      x: 30 * TILE,
+      y: 30 * TILE,
+      vx: 0,
+      vy: 0,
+      hp: base.hp,
+      hpMax: base.hp,
+      stam: base.stam,
+      stamMax: base.stam,
+      mana: base.mana,
+      manaMax: base.mana,
+      atk: base.atk,
+      def: base.def,
+      crit: base.crit,
+      speed: base.speed,
+      level: 1,
+      xp: 0,
+      xpNext: 60,
+      statPoints: 3,
+      stats: { str: 5, agi: 5, spi: 5, vit: 5 },
+      inv: [],
+      equip: { weapon: null, armor: null, helm: null, boots: null, amulet: null, ring: null, gloves: null },
+      potions: 3,
+      dashCooldown: 0,
+      skillCooldown: 0,
+      iFrames: 0,
+      loyalty: { elyne: 0, kael: 0 }
+    };
+  };
+
+  const spawnCompanion = (id) => {
+    const comp = id === 'elyne'
+      ? { id: 'elyne', name: 'Elyne', role: 'support', x: state.player.x - 20, y: state.player.y - 20, hp: 60, hpMax: 60, cooldown: 0, loyalty: 0 }
+      : { id: 'kael', name: 'Kael', role: 'dps', x: state.player.x - 30, y: state.player.y + 20, hp: 80, hpMax: 80, cooldown: 0, loyalty: 0 };
+    state.companions.push(comp);
+  };
+
+  const rollItem = (zoneIndex) => {
+    const rarityRoll = Math.random();
+    let rarity = 'common';
+    if (rarityRoll > 0.95) rarity = 'legendary';
+    else if (rarityRoll > 0.85) rarity = 'epic';
+    else if (rarityRoll > 0.65) rarity = 'rare';
+    const slots = ['weapon', 'armor', 'helm', 'boots', 'amulet', 'ring'];
+    const slot = slots[Math.floor(Math.random() * slots.length)];
+    const affixes = ['+crit', '+stamina', '+resist brume', '+lifesteal', '+atk', '+def', '+mana regen'];
+    const affix = affixes[Math.floor(Math.random() * affixes.length)];
+    return {
+      id: `it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: `${slot} ${rarity}`,
+      slot,
+      rarity,
+      affix,
+      power: zoneIndex + 1
+    };
+  };
+
+  const addItem = (item) => {
+    if (item.type === 'potion') {
+      state.player.potions = clamp(state.player.potions + 1, 0, 9);
+      showToast('Potion +1');
+      return;
+    }
+    state.player.inv.push(item);
+    showToast(`Loot: ${item.name}`);
+  };
+
+  const createEnemy = (zoneIndex, x, y) => {
+    const types = ['vermine', 'goule', 'chevalier creux', 'bête brumeuse', 'mage du voile'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    return {
+      type: t,
+      x, y,
+      vx: 0,
+      vy: 0,
+      hp: 20 + zoneIndex * 12,
+      hpMax: 20 + zoneIndex * 12,
+      atk: 4 + zoneIndex * 2,
+      def: 1 + zoneIndex,
+      state: 'patrol',
+      cooldown: 0,
+      rare: Math.random() > 0.9 ? 'elite' : 'common'
+    };
+  };
+
+  const currentZone = () => clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
+
+  const spawnEnemies = () => {
+    if (state.enemies.length >= 24) return;
+    const zoneIndex = currentZone();
+    for (let i = 0; i < 2; i++) {
+      const x = state.player.x + (Math.random() * 400 - 200);
+      const y = state.player.y + (Math.random() * 300 - 150);
+      const tx = Math.floor((x % (MAP * TILE)) / TILE);
+      const ty = Math.floor(y / TILE);
+      if (!isSolid(tileAt(tx, ty, zoneIndex))) {
+        state.enemies.push(createEnemy(zoneIndex, x, y));
+      }
+    }
+  };
+
+  const updateBars = () => {
+    document.getElementById('hpBar').style.width = `${(state.player.hp / state.player.hpMax) * 100}%`;
+    document.getElementById('staBar').style.width = `${(state.player.stam / state.player.stamMax) * 100}%`;
+    document.getElementById('manaBar').style.width = `${(state.player.mana / state.player.manaMax) * 100}%`;
+    document.getElementById('lvlText').textContent = state.player.level;
+    document.getElementById('goldText').textContent = state.gold;
+    const zone = zones[currentZone()];
+    document.getElementById('zoneText').textContent = zone.name;
+    document.getElementById('questText').textContent = `${zone.name} | Corruption ${Math.round(state.zoneCorruption[zone.id] * 100)}%`;
+  };
+
+  const updateMini = () => {
+    mctx.clearRect(0, 0, mini.width, mini.height);
+    mctx.fillStyle = '#0b0f16';
+    mctx.fillRect(0, 0, mini.width, mini.height);
+    const scale = mini.width / (MAP * TILE * zones.length);
+    mctx.fillStyle = '#22c55e';
+    mctx.fillRect(state.player.x * scale - 2, state.player.y * scale - 2, 4, 4);
+  };
+
+  const updatePlayer = (dt) => {
+    const p = state.player;
+    let ax = 0; let ay = 0;
+    if (keys.left) ax -= 1;
+    if (keys.right) ax += 1;
+    if (keys.up) ay -= 1;
+    if (keys.down) ay += 1;
+    if (joyActive) { ax += joyVec.x; ay += joyVec.y; }
+    const len = Math.hypot(ax, ay) || 1;
+    ax /= len; ay /= len;
+    p.vx = ax * p.speed * dt;
+    p.vy = ay * p.speed * dt;
+    if (keys.dash && p.stam > 20 && p.dashCooldown <= 0) {
+      p.vx *= 3; p.vy *= 3; p.stam -= 20; p.dashCooldown = 1.2;
+    }
+    p.x += p.vx; p.y += p.vy;
+    p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
+    p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
+    const tx = Math.floor((p.x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(p.y / TILE);
+    if (isSolid(tileAt(tx, ty, currentZone()))) {
+      p.x -= p.vx; p.y -= p.vy;
+    }
+    p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
+    p.mana = clamp(p.mana + dt * 6, 0, p.manaMax);
+    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    p.skillCooldown = Math.max(0, p.skillCooldown - dt);
+    p.iFrames = Math.max(0, p.iFrames - dt);
+  };
+
+  const updateEnemies = (dt) => {
+    const p = state.player;
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      const dist2 = dx * dx + dy * dy;
+      if (dist2 < 180 * 180) {
+        const dist = Math.sqrt(dist2) || 1;
+        e.vx = (dx / dist) * 50 * dt;
+        e.vy = (dy / dist) * 50 * dt;
+        e.x += e.vx; e.y += e.vy;
+        if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
+          const dmg = Math.max(1, e.atk - p.def);
+          p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
+          if (p.hp <= 0) { p.hp = p.hpMax; p.x = 30 * TILE; p.y = 30 * TILE; showToast('La brume t\'a rejeté...'); }
+        }
+      } else {
+        e.vx = Math.sin(state.time + i) * 10 * dt;
+        e.vy = Math.cos(state.time + i) * 10 * dt;
+        e.x += e.vx; e.y += e.vy;
+      }
+      e.cooldown = Math.max(0, e.cooldown - dt);
+    }
+  };
+
+  const updateCompanions = (dt) => {
+    const p = state.player;
+    state.companions.forEach(c => {
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > 30) { c.x += (dx / dist) * 30 * dt; c.y += (dy / dist) * 30 * dt; }
+      c.cooldown = Math.max(0, c.cooldown - dt);
+      if (c.cooldown <= 0 && state.enemies.length) {
+        const target = state.enemies[0];
+        target.hp -= c.id === 'elyne' ? 4 : 6;
+        c.cooldown = c.id === 'elyne' ? 1.6 : 1.2;
+      }
+      if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.cooldown <= 0) {
+        p.hp = clamp(p.hp + 10, 0, p.hpMax); c.cooldown = 4;
+      }
+    });
+  };
+
+  const doAttack = () => {
+    if (state.player.stam < 10) return;
+    state.player.stam -= 10;
+    const range = 24;
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      const dx = e.x - state.player.x;
+      const dy = e.y - state.player.y;
+      if (dx * dx + dy * dy < range * range) {
+        const dmg = Math.max(1, state.player.atk - e.def);
+        e.hp -= dmg;
+        if (e.hp <= 0) {
+          state.enemies.splice(i, 1);
+          state.player.xp += 10 + currentZone() * 5;
+          state.gold += 3;
+          if (Math.random() > 0.7) addItem(rollItem(currentZone()));
+          if (Math.random() > 0.8) addItem({ type: 'potion', name: 'Potion' });
+        }
+      }
+    }
+  };
+
+  const checkLevelUp = () => {
+    if (state.player.xp >= state.player.xpNext) {
+      state.player.xp -= state.player.xpNext;
+      state.player.level++;
+      state.player.xpNext = Math.floor(state.player.xpNext * 1.2);
+      state.player.statPoints += 2;
+      state.player.hpMax += 10;
+      state.player.hp = state.player.hpMax;
+      showToast('Niveau supérieur!');
+    }
+  };
+
+  const onInteract = () => {
+    const zone = currentZone();
+    state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.1, 0, 1);
+    state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
+    showToast('Noyau purifié');
+    if (state.zoneCorruption[zone] <= 0 && state.clearedZones < zone + 1) {
+      state.clearedZones = zone + 1;
+      showToast(`Zone purifiée: ${zones[zone].name}`);
+      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
+    }
+  };
+
+  const update = (ts) => {
+    if (!state.running || state.paused) { requestAnimationFrame(update); return; }
+    const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
+    state.time = ts;
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateCompanions(dt);
+    spawnEnemies();
+    checkLevelUp();
+    updateBars();
+    updateMini();
+    draw();
+    requestAnimationFrame(update);
+  };
+
+  const draw = () => {
+    const p = state.player;
+    const zone = zones[currentZone()];
+    ctx.clearRect(0, 0, W, H);
+    const camX = clamp(p.x - W / 2, 0, MAP * zones.length * TILE - W);
+    const camY = clamp(p.y - H / 2, 0, MAP * TILE - H);
+    const startX = Math.floor(camX / TILE);
+    const startY = Math.floor(camY / TILE);
+    const endX = Math.ceil((camX + W) / TILE);
+    const endY = Math.ceil((camY + H) / TILE);
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        const zoneIndex = Math.floor(x / MAP);
+        const t = tileAt(x % MAP, y, zoneIndex);
+        const px = x * TILE - camX;
+        const py = y * TILE - camY;
+        switch (t) {
+          case 0: ctx.fillStyle = '#1a202c'; break;
+          case 2: ctx.fillStyle = '#123a44'; break;
+          case 3: ctx.fillStyle = '#3b3b45'; break;
+          case 4: ctx.fillStyle = '#1f2d1f'; break;
+          case 5: ctx.fillStyle = '#2a2a32'; break;
+          default: ctx.fillStyle = '#0b0f14';
+        }
+        ctx.fillRect(px, py, TILE, TILE);
+      }
+    }
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(p.x - camX - 4, p.y - camY - 4, 8, 8);
+    state.companions.forEach(c => {
+      ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
+      ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
+    });
+    ctx.fillStyle = '#ef4444';
+    state.enemies.forEach(e => ctx.fillRect(e.x - camX - 3, e.y - camY - 3, 6, 6));
+    ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
+    ctx.fillRect(0, 0, W, H);
+  };
+
+  const saveGame = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showToast('Sauvegarde effectuée');
+  };
+
+  const loadGame = () => {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return false;
+    Object.assign(state, JSON.parse(data));
+    state.running = true; state.paused = false;
+    hideAll();
+    return true;
+  };
+
+  const hideAll = () => {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('classMenu').style.display = 'none';
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('inventory').style.display = 'none';
+    document.getElementById('character').style.display = 'none';
+    document.getElementById('journal').style.display = 'none';
+    document.getElementById('options').style.display = 'none';
+    document.getElementById('credits').style.display = 'none';
+  };
+
+  const openPanel = (id) => {
+    hideAll();
+    document.getElementById(id).style.display = 'flex';
+  };
+
+  const renderInventory = () => {
+    const bag = document.getElementById('bagTab');
+    const equip = document.getElementById('equipTab');
+    bag.innerHTML = '';
+    equip.innerHTML = '';
+    state.player.inv.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div><strong>${it.name}</strong> <span class="tag ${it.rarity || 'common'}">${it.rarity || 'unique'}</span></div><div>${it.affix || it.desc || ''}</div><button data-equip="${idx}">Équiper</button>`;
+      bag.appendChild(div);
+    });
+    Object.entries(state.player.equip).forEach(([slot, it]) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div><strong>${slot.toUpperCase()}</strong></div><div>${it ? it.name : 'Vide'}</div>`;
+      equip.appendChild(div);
+    });
+  };
+
+  const renderCharacter = () => {
+    const stats = document.getElementById('statsPanel');
+    const points = document.getElementById('pointsPanel');
+    const talents = document.getElementById('talentsPanel');
+    stats.innerHTML = `
+      <div class="small">Niveau: ${state.player.level}</div>
+      <div class="small">XP: ${state.player.xp}/${state.player.xpNext}</div>
+      <div class="small">Or: ${state.gold}</div>
+      <div class="small">Matériaux: ${state.materials}</div>
+      <div class="small">Potions: ${state.player.potions}</div>
+    `;
+    points.innerHTML = '';
+    ['str','agi','spi','vit'].forEach(stat => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `${stat.toUpperCase()} : ${state.player.stats[stat]} <button data-stat="${stat}">+</button>`;
+      points.appendChild(div);
+    });
+    talents.innerHTML = '';
+    talentTrees[state.player.classKey].forEach((t, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.textContent = `${i + 1}. ${t}`;
+      talents.appendChild(div);
+    });
+  };
+
+  const renderJournal = () => {
+    const questTab = document.getElementById('questTab');
+    const loreTab = document.getElementById('loreTab');
+    questTab.innerHTML = '';
+    loreTab.innerHTML = '';
+    quests.forEach(q => {
+      const done = state.quests[q.id]?.done;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span><div>${q.desc}</div>`;
+      questTab.appendChild(div);
+    });
+    lore.forEach((entry, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>Chronique ${i + 1}</strong><div>${entry}</div>`;
+      loreTab.appendChild(div);
+    });
+  };
+
+  const applySettings = () => {
+    document.documentElement.style.fontSize = settings.textSize === 1 ? '16px' : settings.textSize === 2 ? '18px' : '14px';
+    document.getElementById('toggleShake').textContent = `Screen shake: ${settings.shake ? 'ON' : 'OFF'}`;
+    document.getElementById('toggleParticles').textContent = `Particles: ${settings.lowParticles ? 'LOW' : 'HIGH'}`;
+    document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
+    document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
+  };
+
+  const loadSettings = () => {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) Object.assign(settings, JSON.parse(data));
+    applySettings();
+  };
+
+  const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+  const startGame = (clsKey) => {
+    state.player = createPlayer(clsKey);
+    state.running = true;
+    state.paused = false;
+    state.enemies.length = 0;
+    state.companions.length = 0;
+    state.particles.length = 0;
+    state.drops.length = 0;
+    state.zoneCorruption = [1, 1, 1, 1, 1];
+    state.clearedZones = 0;
+    state.materials = 0;
+    state.gold = 0;
+    state.corruptionAbsorbed = 0;
+    state.quests = {};
+    quests.forEach(q => state.quests[q.id] = { done: false });
+    lore.forEach((_, i) => state.loreFound[i] = false);
+    spawnCompanion('elyne');
+    spawnCompanion('kael');
+    hideAll();
+    showToast('Le serment s\'éveille...');
+  };
+
+  const setTabs = (root, tabs) => {
+    root.querySelectorAll('button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        root.querySelectorAll('button[data-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        tabs.forEach(t => document.getElementById(t).classList.add('hidden'));
+        document.getElementById(btn.dataset.tab + 'Tab').classList.remove('hidden');
+      });
+    });
+  };
+
+  document.getElementById('newBtn').addEventListener('click', () => openPanel('classMenu'));
+  document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
+  document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
+  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu'));
+  document.getElementById('optBack').addEventListener('click', () => openPanel('menu'));
+  document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
+  document.getElementById('saveBtn').addEventListener('click', saveGame);
+  document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
+
+  document.getElementById('toggleShake').addEventListener('click', () => { settings.shake = !settings.shake; applySettings(); saveSettings(); });
+  document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
+  document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
+  document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
+
+  document.getElementById('forgeBtn').addEventListener('click', () => {
+    if (state.materials < 3) return showToast('Matériaux insuffisants');
+    state.materials -= 3; state.player.atk += 1; state.player.def += 1; showToast('Forge réussie');
+  });
+
+  document.getElementById('enchantBtn').addEventListener('click', () => {
+    if (state.gold < 20) return showToast('Or insuffisant');
+    state.gold -= 20; showToast('Affixe reroll');
+  });
+
+  document.getElementById('bagTab').addEventListener('click', (e) => {
+    if (e.target.matches('button[data-equip]')) {
+      const idx = Number(e.target.dataset.equip);
+      const item = state.player.inv.splice(idx, 1)[0];
+      if (item) state.player.equip[item.slot] = item;
+      renderInventory();
+    }
+  });
+
+  document.getElementById('pointsPanel').addEventListener('click', (e) => {
+    if (!e.target.matches('button[data-stat]')) return;
+    if (state.player.statPoints <= 0) return;
+    const stat = e.target.dataset.stat;
+    state.player.stats[stat] += 1; state.player.statPoints -= 1;
+    renderCharacter();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = true;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
+    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
+    if (e.key === ' ') keys.attack = true;
+    if (e.key === 'e') keys.interact = true;
+    if (e.key === 'Shift') keys.dash = true;
+    if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
+    if (e.key === 'c') { openPanel('character'); renderCharacter(); }
+    if (e.key === 'q') { openPanel('journal'); renderJournal(); }
+    if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = false;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
+    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
+    if (e.key === ' ') keys.attack = false;
+    if (e.key === 'e') keys.interact = false;
+    if (e.key === 'Shift') keys.dash = false;
+  });
+
+  canvas.addEventListener('click', () => { if (state.running) doAttack(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
+  window.addEventListener('blur', () => state.paused = true);
+
+  setInterval(() => {
+    if (!state.running) return;
+    if (keys.attack) doAttack();
+    if (keys.interact) onInteract();
+    if (keys.dash) keys.dash = false;
+    if (state.player.hp < state.player.hpMax * 0.3 && state.player.potions > 0) {
+      state.player.potions--; state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+    }
+  }, 200);
+
+  const joy = document.getElementById('joy');
+  const joyDot = document.getElementById('joyDot');
+  const setJoy = (clientX, clientY) => {
+    const rect = joy.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    const dist = Math.min(Math.hypot(dx, dy), rect.width / 2 - 6);
+    const ang = Math.atan2(dy, dx);
+    joyVec.x = Math.cos(ang) * (dist / (rect.width / 2));
+    joyVec.y = Math.sin(ang) * (dist / (rect.height / 2));
+    joyDot.style.left = `${rect.width / 2 + joyVec.x * 40 - 18}px`;
+    joyDot.style.top = `${rect.height / 2 + joyVec.y * 40 - 18}px`;
+  };
+  joy.addEventListener('pointerdown', (e) => { joyActive = true; setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointermove', (e) => { if (joyActive) setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointerup', () => { joyActive = false; joyVec.x = 0; joyVec.y = 0; joyDot.style.left = '42px'; joyDot.style.top = '42px'; });
+
+  document.querySelectorAll('.mobBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.act;
+      if (action === 'attack') doAttack();
+      if (action === 'interact') onInteract();
+      if (action === 'inventory') { openPanel('inventory'); renderInventory(); }
+      if (action === 'pause') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+    });
+  });
+
+  const resize = () => {
+    const { innerWidth: iw, innerHeight: ih } = window;
+    const ratio = 16 / 9;
+    let w = iw; let h = iw / ratio;
+    if (h > ih) { h = ih; w = ih * ratio; }
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  };
+  window.addEventListener('resize', resize);
+
+  const classList = document.getElementById('classList');
+  Object.entries(classes).forEach(([key, c]) => {
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.innerHTML = `<strong>${c.name}</strong><div>${c.skill}</div><div class="small">PV ${c.hp} · Mana ${c.mana} · ATK ${c.atk}</div><button>Choisir</button>`;
+    card.querySelector('button').addEventListener('click', () => startGame(key));
+    classList.appendChild(card);
+  });
+
+  setTabs(document.getElementById('inventory'), ['bagTab', 'equipTab', 'craftTab']);
+  setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
+
+  loadSettings();
+  resize();
+  openPanel('menu');
+  requestAnimationFrame(update);
+
+  // PokiSDK hooks (optional)
   window.gameplayStart = window.gameplayStart || function () {};
   window.gameplayStop = window.gameplayStop || function () {};
   window.requestCommercialBreak = window.requestCommercialBreak || function () {};
   window.requestRewardedBreak = window.requestRewardedBreak || function () {};
-
-  const rnd = (min, max) => Math.random() * (max - min) + min;
-  const rndInt = (min, max) => Math.floor(rnd(min, max));
-  const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
-  const checkCol = (r1, r2) => r1.x < r2.x + r2.w && r1.x + r1.w > r2.x && r1.y < r2.y + r2.h && r1.y + r1.h > r2.y;
-  const guid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-
-  const Input = {
-    keys: {},
-    mouse: { x: 0, y: 0, down: false },
-    joystick: { x: 0, y: 0, active: false },
-    init() {
-      window.addEventListener('keydown', e => {
-        this.keys[e.code] = true;
-        if (e.code === 'KeyI') Game.toggleInventory();
-        if (e.code === 'KeyE') Game.interact();
-        if (e.code === 'Escape') Game.togglePause();
-      });
-      window.addEventListener('keyup', e => { this.keys[e.code] = false; });
-      const cvs = document.getElementById('gameCanvas');
-      window.addEventListener('mousemove', e => {
-        const rect = cvs.getBoundingClientRect();
-        this.mouse.x = (e.clientX - rect.left) * (cvs.width / rect.width);
-        this.mouse.y = (e.clientY - rect.top) * (cvs.height / rect.height);
-      });
-      window.addEventListener('mousedown', () => this.mouse.down = true);
-      window.addEventListener('mouseup', () => this.mouse.down = false);
-      this.setupTouch();
-    },
-    setupTouch() {
-      const zone = document.getElementById('joystick-area');
-      let origin = null;
-      zone.addEventListener('touchstart', e => {
-        e.preventDefault();
-        const touch = e.changedTouches[0];
-        origin = { x: touch.clientX, y: touch.clientY };
-        this.joystick.active = true;
-      });
-      zone.addEventListener('touchmove', e => {
-        if (!origin) return;
-        e.preventDefault();
-        const touch = e.changedTouches[0];
-        const dx = touch.clientX - origin.x;
-        const dy = touch.clientY - origin.y;
-        const len = Math.hypot(dx, dy);
-        const maxLen = 40;
-        const nLen = Math.min(len, maxLen);
-        const angle = Math.atan2(dy, dx);
-        this.joystick.x = Math.cos(angle) * (nLen / maxLen);
-        this.joystick.y = Math.sin(angle) * (nLen / maxLen);
-      });
-      const endTouch = (e) => { e.preventDefault(); this.joystick = {x:0, y:0, active:false}; origin = null; };
-      zone.addEventListener('touchend', endTouch);
-      document.getElementById('btn-atk').ontouchstart = (e) => { e.preventDefault(); this.keys['Space'] = true; this.mouse.down = true; };
-      document.getElementById('btn-atk').ontouchend = (e) => { e.preventDefault(); this.keys['Space'] = false; this.mouse.down = false; };
-      document.getElementById('btn-dash').ontouchstart = (e) => { e.preventDefault(); this.keys['ShiftLeft'] = true; };
-      document.getElementById('btn-dash').ontouchend = (e) => { e.preventDefault(); this.keys['ShiftLeft'] = false; };
-      document.getElementById('btn-interact').ontouchstart = (e) => { e.preventDefault(); Game.interact(); };
-      document.getElementById('btn-inv').ontouchstart = (e) => { e.preventDefault(); Game.toggleInventory(); };
-      document.getElementById('btn-pause').ontouchstart = (e) => { e.preventDefault(); Game.togglePause(); };
-    }
-  };
-
-  const Renderer = {
-    cvs: null,
-    ctx: null,
-    width: 0,
-    height: 0,
-    shake: 0,
-    init() {
-      this.cvs = document.getElementById('gameCanvas');
-      this.ctx = this.cvs.getContext('2d');
-      this.resize();
-      window.addEventListener('resize', () => this.resize());
-    },
-    resize() {
-      this.width = window.innerWidth;
-      this.height = window.innerHeight;
-      this.cvs.width = this.width;
-      this.cvs.height = this.height;
-      this.ctx.imageRendering = 'pixelated';
-    },
-    clear() {
-      this.ctx.fillStyle = CONSTANTS.COLORS.bg;
-      this.ctx.fillRect(0, 0, this.width, this.height);
-    },
-    startCam(x, y) {
-      this.ctx.save();
-      const shakeX = (Math.random() - 0.5) * this.shake;
-      const shakeY = (Math.random() - 0.5) * this.shake;
-      this.shake = Math.max(0, this.shake - 1);
-      this.ctx.translate(this.width / 2 - x + shakeX, this.height / 2 - y + shakeY);
-    },
-    endCam() { this.ctx.restore(); },
-    drawRect(x, y, w, h, color) {
-      this.ctx.fillStyle = color;
-      this.ctx.fillRect(x, y, w, h);
-    }
-  };
-
-  class Entity {
-    constructor(x, y, w, h) {
-      this.id = guid();
-      this.x = x; this.y = y; this.w = w; this.h = h;
-      this.vx = 0; this.vy = 0;
-      this.dead = false;
-    }
-    update(dt) { this.x += this.vx * dt; this.y += this.vy * dt; }
-    draw() { Renderer.drawRect(this.x, this.y, this.w, this.h, '#fff'); }
-  }
-
-  class Particle extends Entity {
-    constructor(x, y, color, life) {
-      super(x, y, rnd(2, 5), rnd(2, 5));
-      this.color = color;
-      this.life = life;
-      this.maxLife = life;
-      const angle = rnd(0, Math.PI * 2);
-      const speed = rnd(20, 100);
-      this.vx = Math.cos(angle) * speed;
-      this.vy = Math.sin(angle) * speed;
-    }
-    update(dt) {
-      super.update(dt);
-      this.life -= dt;
-      this.vx *= 0.95; this.vy *= 0.95;
-      if (this.life <= 0) this.dead = true;
-    }
-    draw() {
-      const ctx = Renderer.ctx;
-      ctx.globalAlpha = this.life / this.maxLife;
-      Renderer.drawRect(this.x, this.y, this.w, this.h, this.color);
-      ctx.globalAlpha = 1;
-    }
-  }
-
-  class Projectile extends Entity {
-    constructor(x, y, angle, speed, dmg, isEnemy) {
-      super(x, y, 6, 6);
-      this.vx = Math.cos(angle) * speed;
-      this.vy = Math.sin(angle) * speed;
-      this.dmg = dmg;
-      this.isEnemy = isEnemy;
-      this.life = 1.2;
-      this.color = isEnemy ? '#f00' : '#ff0';
-    }
-    update(dt) {
-      super.update(dt);
-      this.life -= dt;
-      if (this.isEnemy) {
-        if (checkCol(this, Game.player)) {
-          Game.player.takeDamage(this.dmg);
-          this.dead = true;
-        }
-      } else {
-        Game.enemies.forEach(e => {
-          if (!e.dead && checkCol(this, e)) {
-            e.takeDamage(this.dmg);
-            this.dead = true;
-          }
-        });
-      }
-      if (Game.map.isWall(this.x, this.y)) this.dead = true;
-      if (this.life <= 0) this.dead = true;
-    }
-    draw() {
-      const ctx = Renderer.ctx;
-      ctx.fillStyle = this.color;
-      ctx.beginPath();
-      ctx.arc(this.x + 3, this.y + 3, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  class Player extends Entity {
-    constructor(base) {
-      super(200, 200, 28, 28);
-      this.stats = { hp: base.hp, maxHp: base.hp, sta: 100, mana: base.mp, def: base.def, atk: base.atk, spd: base.spd };
-      this.classType = base.id;
-      this.angle = 0;
-      this.atkCooldown = 0;
-      this.dashCooldown = 0;
-      this.invincible = 0;
-      this.xp = 0; this.lvl = 1; this.gold = 0;
-      this.color = base.color;
-    }
-    update(dt) {
-      if (this.atkCooldown > 0) this.atkCooldown -= dt;
-      if (this.dashCooldown > 0) this.dashCooldown -= dt;
-      if (this.invincible > 0) this.invincible -= dt;
-      let dx = 0, dy = 0;
-      if (Input.keys['KeyW'] || Input.keys['ArrowUp']) dy = -1;
-      if (Input.keys['KeyS'] || Input.keys['ArrowDown']) dy = 1;
-      if (Input.keys['KeyA'] || Input.keys['ArrowLeft']) dx = -1;
-      if (Input.keys['KeyD'] || Input.keys['ArrowRight']) dx = 1;
-      if (Input.joystick.active) { dx = Input.joystick.x; dy = Input.joystick.y; }
-      if (dx !== 0 || dy !== 0) {
-        const len = Math.hypot(dx, dy);
-        if (len > 0) { dx /= len; dy /= len; }
-      }
-      let spd = this.stats.spd;
-      if ((Input.keys['ShiftLeft'] || Input.keys['ShiftRight']) && this.dashCooldown <= 0 && this.stats.sta > 20) {
-        spd *= 3; this.dashCooldown = 1.0; this.stats.sta -= 20; this.invincible = 0.2;
-        Game.particles.push(new Particle(this.x, this.y, '#fff', 0.4));
-      }
-      const nextX = this.x + dx * spd * dt;
-      const nextY = this.y + dy * spd * dt;
-      if (!Game.map.isWall(nextX, this.y)) this.x = nextX;
-      if (!Game.map.isWall(this.x, nextY)) this.y = nextY;
-      const screenX = Renderer.width / 2;
-      const screenY = Renderer.height / 2;
-      this.angle = Math.atan2(Input.mouse.y - screenY, Input.mouse.x - screenX);
-      if (Input.mouse.down && this.atkCooldown <= 0) this.attack();
-      if (this.stats.sta < 100) this.stats.sta += 12 * dt;
-      if (this.stats.mana < 120) this.stats.mana += 6 * dt;
-    }
-    attack() {
-      this.atkCooldown = this.classType === 'blade' ? 0.4 : 0.3;
-      const cx = this.x + 14; const cy = this.y + 14;
-      const dmg = 10 + (this.lvl * 2);
-      if (this.classType === 'blade') {
-        Game.projectiles.push(new Projectile(cx, cy, this.angle, 360, dmg * 1.2, false));
-        Game.projectiles.push(new Projectile(cx, cy, this.angle + 0.4, 360, dmg, false));
-        Game.projectiles.push(new Projectile(cx, cy, this.angle - 0.4, 360, dmg, false));
-      } else if (this.classType === 'arcanist') {
-        Game.projectiles.push(new Projectile(cx, cy, this.angle, 520, dmg * 1.3, false));
-      } else {
-        Game.projectiles.push(new Projectile(cx, cy, this.angle, 700, dmg, false));
-      }
-    }
-    takeDamage(amount) {
-      if (this.invincible > 0) return;
-      this.stats.hp -= Math.max(1, amount - this.stats.def);
-      this.invincible = 1.0; Renderer.shake = 8;
-      for (let i = 0; i < 5; i++) Game.particles.push(new Particle(this.x + 14, this.y + 14, '#f00', 0.5));
-      if (this.stats.hp <= 0) { this.stats.hp = 0; Game.gameOver(); }
-    }
-    draw() {
-      const ctx = Renderer.ctx;
-      ctx.fillStyle = this.invincible > 0 && Math.floor(Date.now()/100)%2 ? '#fff' : this.color;
-      ctx.fillRect(this.x, this.y, this.w, this.h);
-      ctx.fillStyle = '#ddd';
-      ctx.fillRect(this.x + 18, this.y + 10, 12, 4);
-    }
-  }
-
-  class Enemy extends Entity {
-    constructor(x, y, type, tier) {
-      super(x, y, 26, 26);
-      this.type = type;
-      this.tier = tier;
-      this.hp = 24 * tier;
-      this.maxHp = this.hp;
-      this.color = type === 'melee' ? '#b55' : '#5b5';
-      this.speed = type === 'melee' ? 90 : 70;
-      this.timer = 0;
-    }
-    update(dt) {
-      const d = dist(this.x, this.y, Game.player.x, Game.player.y);
-      if (d < 320) {
-        const angle = Math.atan2(Game.player.y - this.y, Game.player.x - this.x);
-        this.vx = Math.cos(angle) * this.speed;
-        this.vy = Math.sin(angle) * this.speed;
-        const nextX = this.x + this.vx * dt;
-        const nextY = this.y + this.vy * dt;
-        if (!Game.map.isWall(nextX, nextY)) { this.x = nextX; this.y = nextY; }
-        this.timer -= dt;
-        if (this.timer <= 0 && d < 200) {
-          this.timer = 1.6;
-          Game.projectiles.push(new Projectile(this.x + 14, this.y + 14, angle, 240, 8 * this.tier, true));
-        }
-      }
-    }
-    takeDamage(dmg) {
-      this.hp -= dmg;
-      Game.particles.push(new Particle(this.x + 12, this.y + 12, '#fff', 0.2));
-      if (this.hp <= 0) {
-        this.dead = true;
-        Game.addXp(10 * this.tier);
-        LootSystem.drop(this.x, this.y, this.tier);
-      }
-    }
-    draw() {
-      Renderer.drawRect(this.x, this.y, this.w, this.h, this.color);
-      const ctx = Renderer.ctx;
-      ctx.fillStyle = 'red';
-      ctx.fillRect(this.x, this.y - 6, this.w * (this.hp / this.maxHp), 3);
-    }
-  }
-
-  class Pickup extends Entity {
-    constructor(x, y, item) {
-      super(x, y, 20, 20);
-      this.item = item;
-      this.bob = 0;
-    }
-    update(dt) {
-      this.bob += dt * 5;
-      if (checkCol(this, Game.player)) {
-        Game.inventory.push(this.item);
-        Game.notifications.push(`+ ${this.item.name}`);
-        this.dead = true;
-      }
-    }
-    draw() {
-      const ctx = Renderer.ctx;
-      const yOff = Math.sin(this.bob) * 4;
-      ctx.shadowBlur = 10; ctx.shadowColor = CONSTANTS.COLORS.accent;
-      ctx.fillStyle = CONSTANTS.COLORS.accent;
-      ctx.beginPath();
-      ctx.arc(this.x + 10, this.y + 10 + yOff, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-  }
-
-  const LootSystem = {
-    rarities: ['Commun', 'Rare', 'Épique', 'Légendaire'],
-    types: ['Arme', 'Armure', 'Amulette'],
-    names: ['de Brume', 'des Cendres', 'du Voile', 'Héroïque'],
-    drop(x, y, tier) {
-      if (Math.random() > 0.45) return;
-      const rarityIdx = Math.min(3, Math.floor(Math.random() * (tier + 1)));
-      const type = this.types[Math.floor(Math.random() * this.types.length)];
-      const rarity = this.rarities[rarityIdx];
-      const item = {
-        id: guid(),
-        name: `${type} ${this.names[Math.floor(Math.random()*this.names.length)]}`,
-        type,
-        rarity,
-        level: tier,
-        stats: { atk: type === 'Arme' ? Math.floor(rnd(5, 15) * (tier+1) * (rarityIdx+1)) : 0, def: type === 'Armure' ? Math.floor(rnd(2, 10) * (tier+1)) : 0, hp: Math.floor(rnd(10, 50) * (rarityIdx+1)) }
-      };
-      Game.entities.push(new Pickup(x, y, item));
-    }
-  };
-
-  const MapGen = {
-    generate(zoneId) {
-      const size = 60;
-      const map = { w: size, h: size, tiles: [] };
-      for (let y = 0; y < size; y++) {
-        map.tiles[y] = [];
-        for (let x = 0; x < size; x++) {
-          let isWall = Math.random() < 0.1 || x === 0 || x === size - 1 || y === 0 || y === size - 1;
-          if (Math.random() < 0.05) isWall = true;
-          map.tiles[y][x] = isWall ? 1 : 0;
-        }
-      }
-      return map;
-    }
-  };
-
-  const Game = {
-    lastTime: 0,
-    player: null,
-    map: { data: null, isWall: (x, y) => {
-      if (!Game.map.data) return false;
-      const tx = Math.floor(x / CONSTANTS.TILE_SIZE);
-      const ty = Math.floor(y / CONSTANTS.TILE_SIZE);
-      if (ty < 0 || ty >= Game.map.data.h || tx < 0 || tx >= Game.map.data.w) return true;
-      return Game.map.data.tiles[ty][tx] === 1;
-    }},
-    enemies: [],
-    projectiles: [],
-    particles: [],
-    entities: [],
-    inventory: [],
-    notifications: [],
-    running: false,
-    paused: false,
-    zoneLevel: 0,
-    init() {
-      Renderer.init();
-      Input.init();
-      this.loop = this.loop.bind(this);
-      this.bindUI();
-      this.populateClasses();
-      this.refreshContinue();
-      requestAnimationFrame(this.loop);
-    },
-    bindUI() {
-      document.getElementById('btn-new').addEventListener('click', () => this.startNewGame());
-      document.getElementById('btn-continue').addEventListener('click', () => this.loadGame());
-      document.getElementById('btn-options').addEventListener('click', () => UI.toast('Options: bientôt disponibles'));
-      document.getElementById('btn-close-inv').addEventListener('click', () => this.toggleInventory());
-    },
-    populateClasses() {
-      const container = document.getElementById('class-cards');
-      container.innerHTML = '';
-      CLASSES.forEach(c => {
-        const div = document.createElement('div');
-        div.className = 'panel';
-        div.style.width = '240px';
-        div.style.cursor = 'pointer';
-        div.innerHTML = `<h3 style="color:${c.color}">${c.name}</h3><p>${c.desc}</p><p style="font-size:12px; color:#aaa;">PV ${c.hp} | Mana ${c.mp} | ATK ${c.atk}</p>`;
-        div.addEventListener('click', () => this.selectClass(c));
-        container.appendChild(div);
-      });
-    },
-    refreshContinue() {
-      document.getElementById('btn-continue').style.display = localStorage.getItem(STORAGE_KEY) ? 'inline-block' : 'none';
-    },
-    startNewGame() {
-      document.getElementById('menu-main').style.display = 'none';
-      document.getElementById('menu-char-select').style.display = 'flex';
-      if (window.gameplayStart) window.gameplayStart();
-    },
-    selectClass(cls) {
-      document.getElementById('menu-char-select').style.display = 'none';
-      this.player = new Player(cls);
-      this.loadZone(0);
-      this.running = true;
-      this.paused = false;
-      this.lastTime = performance.now();
-      this.updateUI();
-    },
-    loadZone(id) {
-      this.zoneLevel = id;
-      this.map.data = MapGen.generate(id);
-      this.enemies = [];
-      this.entities = [];
-      this.projectiles = [];
-      for (let i = 0; i < 14 + id * 5; i++) {
-        let ex, ey;
-        do {
-          ex = rndInt(2, 58) * CONSTANTS.TILE_SIZE;
-          ey = rndInt(2, 58) * CONSTANTS.TILE_SIZE;
-        } while (this.map.isWall(ex, ey) || dist(ex, ey, this.player.x, this.player.y) < 300);
-        this.enemies.push(new Enemy(ex, ey, Math.random() > 0.5 ? 'melee' : 'ranged', id + 1));
-      }
-      UI.updateQuest();
-    },
-    loop(now) {
-      requestAnimationFrame(this.loop);
-      const dt = Math.min((now - this.lastTime) / 1000, 0.1);
-      this.lastTime = now;
-      if (!this.running || this.paused) return;
-      this.player.update(dt);
-      this.enemies.forEach(e => e.update(dt));
-      this.projectiles.forEach(p => p.update(dt));
-      this.entities.forEach(e => e.update(dt));
-      this.particles.forEach(p => p.update(dt));
-      this.enemies = this.enemies.filter(e => !e.dead);
-      this.projectiles = this.projectiles.filter(p => !p.dead);
-      this.entities = this.entities.filter(e => !e.dead);
-      this.particles = this.particles.filter(p => !p.dead);
-      if (this.enemies.length === 0 && this.zoneLevel < 4) {
-        this.notifications.push('Zone purifiée ! Passage à la suivante...');
-        setTimeout(() => this.loadZone(this.zoneLevel + 1), 1500);
-      }
-      Renderer.clear();
-      Renderer.startCam(this.player.x + 14, this.player.y + 14);
-      const ts = CONSTANTS.TILE_SIZE;
-      const screenX = this.player.x - Renderer.width / 2;
-      const screenY = this.player.y - Renderer.height / 2;
-      const startCol = Math.floor(screenX / ts);
-      const endCol = startCol + (Renderer.width / ts) + 1;
-      const startRow = Math.floor(screenY / ts);
-      const endRow = startRow + (Renderer.height / ts) + 1;
-      for (let y = Math.max(0, startRow); y < Math.min(this.map.data.h, endRow); y++) {
-        for (let x = Math.max(0, startCol); x < Math.min(this.map.data.w, endCol); x++) {
-          if (this.map.data.tiles[y][x] === 1) {
-            Renderer.drawRect(x * ts, y * ts, ts, ts, '#333');
-            Renderer.drawRect(x * ts, y * ts, ts, 3, '#555');
-          } else {
-            Renderer.drawRect(x * ts, y * ts, ts, ts, '#111');
-          }
-        }
-      }
-      this.entities.forEach(e => e.draw(Renderer.ctx));
-      this.enemies.forEach(e => e.draw(Renderer.ctx));
-      this.player.draw(Renderer.ctx);
-      this.projectiles.forEach(p => p.draw(Renderer.ctx));
-      this.particles.forEach(p => p.draw(Renderer.ctx));
-      Renderer.endCam();
-      this.updateUI();
-    },
-    updateUI() {
-      const p = this.player.stats;
-      document.getElementById('hp-bar').style.width = `${(p.hp/p.maxHp)*100}%`;
-      document.getElementById('hp-val').innerText = Math.floor(p.hp);
-      document.getElementById('hp-max').innerText = p.maxHp;
-      document.getElementById('sta-bar').style.width = `${(p.sta/100)*100}%`;
-      document.getElementById('mana-bar').style.width = `${(p.mana/120)*100}%`;
-      document.getElementById('lvl-val').innerText = this.player.lvl;
-      document.getElementById('gold-val').innerText = this.player.gold;
-      const notifDiv = document.getElementById('notifications');
-      notifDiv.innerHTML = '';
-      this.notifications.forEach(n => {
-        const d = document.createElement('div');
-        d.innerText = n;
-        d.style.color = '#fff';
-        d.style.textShadow = '0 0 4px #000';
-        d.style.fontSize = '14px';
-        notifDiv.appendChild(d);
-      });
-      if (this.notifications.length > 0 && Math.random() < 0.05) this.notifications.shift();
-    },
-    addXp(amount) {
-      this.player.xp += amount;
-      if (this.player.xp > this.player.lvl * 100) {
-        this.player.lvl++;
-        this.player.xp = 0;
-        this.player.stats.maxHp += 15;
-        this.player.stats.hp = this.player.stats.maxHp;
-        this.notifications.push('NIVEAU SUPÉRIEUR !');
-      }
-    },
-    toggleInventory() {
-      const invMenu = document.getElementById('menu-inventory');
-      const isOpen = invMenu.style.display === 'flex';
-      invMenu.style.display = isOpen ? 'none' : 'flex';
-      if (!isOpen) {
-        const container = document.getElementById('inv-container');
-        container.innerHTML = '';
-        this.inventory.forEach(item => {
-          const d = document.createElement('div');
-          d.className = 'slot';
-          d.innerHTML = `<div>${item.type}</div><div style="font-size:10px;">${item.rarity}</div>`;
-          d.onclick = () => {
-            this.player.stats.maxHp += item.stats.hp;
-            this.player.stats.atk += item.stats.atk;
-            this.player.stats.def += item.stats.def;
-            this.notifications.push(`Équipé : ${item.name}`);
-            this.inventory = this.inventory.filter(i => i !== item);
-            this.toggleInventory();
-          };
-          container.appendChild(d);
-        });
-        document.getElementById('stats-display').innerHTML = `
-          <div>PV: ${this.player.stats.hp}/${this.player.stats.maxHp}</div>
-          <div>ATK: ${this.player.stats.atk}</div>
-          <div>DEF: ${this.player.stats.def}</div>
-          <div>VIT: ${this.player.stats.spd}</div>
-        `;
-      }
-    },
-    togglePause() {
-      this.paused = !this.paused;
-      document.getElementById('menu-main').style.display = this.paused ? 'flex' : 'none';
-      if (this.paused && window.gameplayStop) window.gameplayStop();
-      if (!this.paused && window.gameplayStart) window.gameplayStart();
-    },
-    interact() {
-      this.notifications.push('Rien à utiliser ici.');
-    },
-    gameOver() {
-      this.running = false;
-      alert('Vous êtes tombé. La brume vous rejette.');
-      location.reload();
-    },
-    saveGame() {
-      const data = {
-        cls: this.player.classType,
-        player: this.player,
-        zone: this.zoneLevel,
-        inventory: this.inventory
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      UI.toast('Partie sauvegardée');
-      this.refreshContinue();
-    },
-    loadGame() {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!data) return UI.toast('Aucune sauvegarde');
-      document.getElementById('menu-main').style.display = 'none';
-      const cls = CLASSES.find(c => c.id === data.cls) || CLASSES[0];
-      this.player = new Player(cls);
-      this.player = Object.assign(this.player, data.player);
-      this.inventory = data.inventory || [];
-      this.loadZone(data.zone || 0);
-      this.running = true;
-      this.paused = false;
-    }
-  };
-
-  const UI = {
-    toast(text) {
-      const notif = document.getElementById('notifications');
-      const d = document.createElement('div');
-      d.textContent = text;
-      d.style.color = 'var(--accent)';
-      d.style.fontSize = '14px';
-      notif.appendChild(d);
-      setTimeout(() => d.remove(), 2000);
-    },
-    updateQuest() {
-      const zone = CONSTANTS.ZONES[Game.zoneLevel];
-      document.getElementById('quest-title').innerText = 'Objectif';
-      document.getElementById('quest-desc').innerText = `Purifiez : ${zone.name}`;
-    }
-  };
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) Game.paused = true;
-  });
-  window.addEventListener('blur', () => Game.paused = true);
-
-  window.addEventListener('load', () => {
-    Game.init();
-  });
 })();
 </script>
 </body>
