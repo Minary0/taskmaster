@@ -171,6 +171,24 @@ button:active { transform: translateY(1px); }
     </div>
   </div>
 
+  <div id="dialogue" class="overlay">
+    <div class="panel">
+      <h2 id="dialogueName">Dialogue</h2>
+      <p id="dialogueText"></p>
+      <div id="dialogueChoices" class="tabs"></div>
+      <button id="dialogueClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="shop" class="overlay">
+    <div class="panel">
+      <h2>Marchand</h2>
+      <div class="small">Or: <span id="shopGold">0</span></div>
+      <div id="shopList" class="list"></div>
+      <button id="shopClose">Fermer</button>
+    </div>
+  </div>
+
   <div id="options" class="overlay">
     <div class="panel">
       <h2>Options</h2>
@@ -343,7 +361,12 @@ button:active { transform: translateY(1px); }
     { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
     { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
     { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
-    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' }
+    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' },
+    { name: 'Azar', role: 'Marchand', zone: 0, dialog: 'Mon or vaut plus que ta mémoire, Marqué.' },
+    { name: 'Sage Mir', role: 'Oracle', zone: 4, dialog: 'Le Roi attendait un Marqué.' },
+    { name: 'Tess des Marais', role: 'Survivante', zone: 0, dialog: 'Les noyaux poussent comme des dents.' },
+    { name: 'Ardent Sion', role: 'Chasseur', zone: 1, dialog: 'Le cerf rôde. Ne le regarde pas.' },
+    { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
   ];
 
   const state = {
@@ -362,7 +385,9 @@ button:active { transform: translateY(1px); }
     loreFound: {},
     materials: 0,
     gold: 0,
-    corruptionAbsorbed: 0
+    corruptionAbsorbed: 0,
+    npcs: [],
+    bestProgress: 0
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -403,6 +428,50 @@ button:active { transform: translateY(1px); }
     el.classList.add('show');
     clearTimeout(el._t);
     el._t = setTimeout(() => el.classList.remove('show'), 1400);
+  };
+
+  const audio = {
+    ctx: null,
+    enabled: false,
+    init() {
+      if (this.ctx) return;
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.enabled = true;
+      } catch (err) {
+        this.enabled = false;
+      }
+    },
+    tone(freq, dur, type, vol) {
+      if (!this.enabled || settings.mute) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(t + dur);
+    },
+    hit() { this.tone(180, 0.06, 'sawtooth', 0.08); },
+    loot() { this.tone(620, 0.12, 'sine', 0.1); },
+    menu() { this.tone(520, 0.08, 'triangle', 0.06); },
+    ambient(zone) {
+      if (!this.enabled || settings.mute) return;
+      if (this._amb) { this._amb.stop(); this._amb = null; }
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(80 + zone * 12, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      this._amb = osc;
+    }
   };
 
   const createPlayer = (clsKey) => {
@@ -446,6 +515,15 @@ button:active { transform: translateY(1px); }
     state.companions.push(comp);
   };
 
+  const buildNpcInstances = () => {
+    state.npcs = npcs.map((npc, idx) => {
+      const zoneOffset = npc.zone * MAP * TILE;
+      const x = zoneOffset + (10 + (idx % 10) * 4) * TILE;
+      const y = (12 + (idx % 6) * 3) * TILE;
+      return { ...npc, x, y, recruited: false };
+    });
+  };
+
   const rollItem = (zoneIndex) => {
     const rarityRoll = Math.random();
     let rarity = 'common';
@@ -470,9 +548,11 @@ button:active { transform: translateY(1px); }
     if (item.type === 'potion') {
       state.player.potions = clamp(state.player.potions + 1, 0, 9);
       showToast('Potion +1');
+      audio.loot();
       return;
     }
     state.player.inv.push(item);
+    audio.loot();
     showToast(`Loot: ${item.name}`);
   };
 
@@ -616,6 +696,7 @@ button:active { transform: translateY(1px); }
       if (dx * dx + dy * dy < range * range) {
         const dmg = Math.max(1, state.player.atk - e.def);
         e.hp -= dmg;
+        audio.hit();
         if (e.hp <= 0) {
           state.enemies.splice(i, 1);
           state.player.xp += 10 + currentZone() * 5;
@@ -641,11 +722,35 @@ button:active { transform: translateY(1px); }
 
   const onInteract = () => {
     const zone = currentZone();
+    const nearNpc = state.npcs.find(npc => {
+      const dx = npc.x - state.player.x;
+      const dy = npc.y - state.player.y;
+      return dx * dx + dy * dy < 40 * 40;
+    });
+    if (nearNpc) {
+      if (nearNpc.role.toLowerCase().includes('marchand')) {
+        renderShop();
+        openPanel('shop');
+        return;
+      }
+      if (nearNpc.role === 'Compagnon' && !nearNpc.recruited) {
+        openDialogue(nearNpc, nearNpc.dialog, [
+          { label: 'Recruter', onPick: () => { nearNpc.recruited = true; spawnCompanion(nearNpc.name.includes('Elyne') ? 'elyne' : 'kael'); showToast(`${nearNpc.name} rejoint votre serment`); } },
+          { label: 'Refuser', onPick: () => showToast('Vous repoussez sa main.') }
+        ]);
+        return;
+      }
+      openDialogue(nearNpc, nearNpc.dialog, [
+        { label: 'Continuer', onPick: () => openPanel('dialogue') }
+      ]);
+      return;
+    }
     state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.1, 0, 1);
     state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
     showToast('Noyau purifié');
     if (state.zoneCorruption[zone] <= 0 && state.clearedZones < zone + 1) {
       state.clearedZones = zone + 1;
+      state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
       showToast(`Zone purifiée: ${zones[zone].name}`);
       addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
     }
@@ -699,6 +804,10 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
       ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
     });
+    state.npcs.forEach(npc => {
+      ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
+      ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
+    });
     ctx.fillStyle = '#ef4444';
     state.enemies.forEach(e => ctx.fillRect(e.x - camX - 3, e.y - camY - 3, 6, 6));
     ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
@@ -715,6 +824,9 @@ button:active { transform: translateY(1px); }
     if (!data) return false;
     Object.assign(state, JSON.parse(data));
     state.running = true; state.paused = false;
+    if (!state.npcs || !state.npcs.length) buildNpcInstances();
+    audio.init();
+    audio.ambient(currentZone());
     hideAll();
     return true;
   };
@@ -801,6 +913,51 @@ button:active { transform: translateY(1px); }
     });
   };
 
+  const shopStock = [
+    { name: 'Potion', type: 'potion', price: 15 },
+    { name: 'Amulette ternie', item: { name: 'amulet rare', slot: 'amulet', rarity: 'rare', affix: '+resist brume' }, price: 60 },
+    { name: 'Armure d\'écaille', item: { name: 'armor rare', slot: 'armor', rarity: 'rare', affix: '+def' }, price: 75 }
+  ];
+
+  const openDialogue = (npc, text, choices) => {
+    document.getElementById('dialogueName').textContent = npc.name;
+    document.getElementById('dialogueText').textContent = text || npc.dialog;
+    const list = document.getElementById('dialogueChoices');
+    list.innerHTML = '';
+    choices.forEach(choice => {
+      const btn = document.createElement('button');
+      btn.textContent = choice.label;
+      btn.addEventListener('click', () => {
+        choice.onPick();
+        openPanel('dialogue');
+      });
+      list.appendChild(btn);
+    });
+    openPanel('dialogue');
+  };
+
+  const renderShop = () => {
+    document.getElementById('shopGold').textContent = state.gold;
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    shopStock.forEach((s, idx) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${s.name}</strong> <span class="small">${s.price} or</span>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Acheter';
+      btn.addEventListener('click', () => {
+        if (state.gold < s.price) return showToast('Or insuffisant');
+        state.gold -= s.price;
+        if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
+        if (s.item) addItem({ ...s.item });
+        renderShop();
+      });
+      div.appendChild(btn);
+      list.appendChild(div);
+    });
+  };
+
   const applySettings = () => {
     document.documentElement.style.fontSize = settings.textSize === 1 ? '16px' : settings.textSize === 2 ? '18px' : '14px';
     document.getElementById('toggleShake').textContent = `Screen shake: ${settings.shake ? 'ON' : 'OFF'}`;
@@ -833,9 +990,10 @@ button:active { transform: translateY(1px); }
     state.quests = {};
     quests.forEach(q => state.quests[q.id] = { done: false });
     lore.forEach((_, i) => state.loreFound[i] = false);
-    spawnCompanion('elyne');
-    spawnCompanion('kael');
+    buildNpcInstances();
     hideAll();
+    audio.init();
+    audio.ambient(currentZone());
     showToast('Le serment s\'éveille...');
   };
 
@@ -856,6 +1014,8 @@ button:active { transform: translateY(1px); }
   document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
   document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu'));
   document.getElementById('optBack').addEventListener('click', () => openPanel('menu'));
+  document.getElementById('dialogueClose').addEventListener('click', () => openPanel('menu'));
+  document.getElementById('shopClose').addEventListener('click', () => openPanel('menu'));
   document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
   document.getElementById('saveBtn').addEventListener('click', saveGame);
   document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
