@@ -81,6 +81,14 @@ button:active { transform: translateY(1px); }
 .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tabs button.active { border-color: var(--accent); }
 .list { display: grid; gap: 8px; }
+.inv-layout { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 10px; }
+.inv-center { display: grid; place-items: center; min-height: 160px; border: 1px solid var(--ui-border); background: rgba(10,10,16,0.7); }
+.inv-slot { border: 1px solid #2c2c3c; background: #0b0f16; padding: 6px; min-height: 48px; }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; margin-top: 10px; }
+.inv-cell { width: 60px; height: 60px; border: 1px solid #2c2c3c; background: #111827; display: grid; place-items: center; font-size: 11px; }
+.inv-cell.rare { border-color: var(--rare); }
+.inv-cell.epic { border-color: var(--epic); }
+.inv-cell.legendary { border-color: var(--legend); }
 .item { background: rgba(18,18,24,0.95); border: 1px solid var(--ui-border); border-radius: 4px; padding: 8px; }
 .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
 .tag.common { background: #1f2937; }
@@ -861,7 +869,6 @@ button:active { transform: translateY(1px); }
       stats: { str: 5, agi: 5, spi: 5, vit: 5 },
       inv: [],
       equip: { weapon: null, armor: null, helm: null, boots: null, amulet: null, ring: null, gloves: null },
-      potions: 3,
       dashCooldown: 0,
       skillCooldown: 0,
       iFrames: 0,
@@ -979,6 +986,12 @@ button:active { transform: translateY(1px); }
     if (item.type === 'potion') {
       state.player.inv.push({ type: 'potion', name: 'Potion' });
       showToast('Potion +1');
+      audio.loot();
+      return;
+    }
+    if (item.type === 'mana_potion') {
+      state.player.inv.push({ type: 'mana_potion', name: 'Potion de Mana' });
+      showToast('Potion de Mana +1');
       audio.loot();
       return;
     }
@@ -1868,20 +1881,31 @@ button:active { transform: translateY(1px); }
     consumables.innerHTML = '';
     allies.innerHTML = '';
     questsPanel.innerHTML = '';
-    Object.entries(state.player.equip).forEach(([slot, it]) => {
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `<div><strong>${slot.toUpperCase()}</strong></div><div>${it ? it.name : 'Vide'}</div>`;
-      equip.appendChild(div);
-    });
+    const layout = document.createElement('div');
+    layout.className = 'inv-layout';
+    const left = document.createElement('div');
+    const center = document.createElement('div');
+    const right = document.createElement('div');
+    left.innerHTML = '<div class="inv-slot">Arme</div><div class="inv-slot">Armure</div><div class="inv-slot">Accessoire</div>';
+    right.innerHTML = '<div class="inv-slot">Bottes</div><div class="inv-slot">Casque</div><div class="inv-slot">Anneau</div>';
+    center.className = 'inv-center';
+    center.innerHTML = `<div class="small">Marqué</div><div class="item">ATK ${state.player.atk} · DEF ${state.player.def} · PV ${state.player.hpMax}</div>`;
+    layout.appendChild(left);
+    layout.appendChild(center);
+    layout.appendChild(right);
+    equip.appendChild(layout);
+    const grid = document.createElement('div');
+    grid.className = 'inv-grid';
     state.player.inv.forEach((it, idx) => {
-      if (it.type === 'potion') return;
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `<div><strong>${it.name}</strong> <span class="tag ${it.rarity || 'common'}">${it.rarity || 'unique'}</span></div><div>${it.affix || it.desc || ''}</div><button data-equip="${idx}">Équiper</button>`;
-      equip.appendChild(div);
+      if (it.type === 'potion' || it.type === 'mana_potion') return;
+      const cell = document.createElement('div');
+      cell.className = `inv-cell ${it.rarity || ''}`;
+      cell.textContent = it.name;
+      cell.dataset.equip = idx;
+      grid.appendChild(cell);
     });
-    const potionIndexes = state.player.inv.map((it, idx) => it.type === 'potion' ? idx : null).filter(idx => idx !== null);
+    equip.appendChild(grid);
+    const potionIndexes = state.player.inv.map((it, idx) => (it.type === 'potion' || it.type === 'mana_potion') ? idx : null).filter(idx => idx !== null);
     if (!potionIndexes.length) {
       consumables.innerHTML = '<div class="item">Aucune potion.</div>';
     } else {
@@ -2030,7 +2054,7 @@ button:active { transform: translateY(1px); }
     const list = document.getElementById('shopList');
     list.innerHTML = '';
     const stock = state.shopType === 'mana'
-      ? [{ name: 'Potion de Mana', type: 'mana', price: 20 }]
+      ? [{ name: 'Potion de Mana', type: 'mana_potion', price: 20 }]
       : state.shopType === 'hp'
         ? [{ name: 'Potion', type: 'potion', price: 15 }]
         : state.shopType === 'equipment'
@@ -2046,10 +2070,7 @@ button:active { transform: translateY(1px); }
         if (state.gold < s.price) return showToast('Or insuffisant');
         state.gold -= s.price;
         if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
-        if (s.type === 'mana') {
-          state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
-          showToast('Mana restauré');
-        }
+        if (s.type === 'mana_potion') addItem({ type: 'mana_potion', name: 'Potion de Mana' });
         if (s.item) addItem({ ...s.item });
         renderShop();
       });
@@ -2103,7 +2124,7 @@ button:active { transform: translateY(1px); }
     quests.forEach(q => state.quests[q.id] = { done: false });
     lore.forEach((_, i) => state.loreFound[i] = false);
     buildNpcInstances();
-    state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'potion', name: 'Potion' });
+    state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
     hideAll();
     audio.init();
     audio.ambient(currentZone());
@@ -2168,8 +2189,9 @@ button:active { transform: translateY(1px); }
   });
 
   document.getElementById('equipTab').addEventListener('click', (e) => {
-    if (e.target.matches('button[data-equip]')) {
-      const idx = Number(e.target.dataset.equip);
+    const cell = e.target.closest('[data-equip]');
+    if (cell) {
+      const idx = Number(cell.dataset.equip);
       const item = state.player.inv.splice(idx, 1)[0];
       if (item) state.player.equip[item.slot] = item;
       renderInventory();
@@ -2183,6 +2205,11 @@ button:active { transform: translateY(1px); }
         state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
         state.player.inv.splice(idx, 1);
         showToast('Potion utilisée');
+        renderInventory();
+      } else if (item && item.type === 'mana_potion') {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
         renderInventory();
       }
     }
@@ -2216,6 +2243,22 @@ button:active { transform: translateY(1px); }
     if (e.key === '+' || e.key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
     if (e.key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
     if (e.key.toLowerCase() === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
+    if (e.key.toLowerCase() === 'h') {
+      const idx = state.player.inv.findIndex(it => it.type === 'potion');
+      if (idx >= 0) {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+      }
+    }
+    if (e.key.toLowerCase() === 'm') {
+      const idx = state.player.inv.findIndex(it => it.type === 'mana_potion');
+      if (idx >= 0) {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
+      }
+    }
     if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
   });
 
