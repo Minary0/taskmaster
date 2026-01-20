@@ -616,6 +616,29 @@ button:active { transform: translateY(1px); }
     state.hubMap = tiles;
   };
 
+  const getZoneRng = (zone) => rand((state.seed + zone * 9973) >>> 0);
+
+  const findZonePoint = (zone, rng, paddingTiles = 6, maxAttempts = 120) => {
+    const minX = zone * MAP * TILE + paddingTiles * TILE;
+    const maxX = zone * MAP * TILE + (MAP - paddingTiles - 1) * TILE;
+    const minY = paddingTiles * TILE;
+    const maxY = (MAP - paddingTiles - 1) * TILE;
+    for (let i = 0; i < maxAttempts; i++) {
+      const x = minX + rng() * (maxX - minX);
+      const y = minY + rng() * (maxY - minY);
+      if (!isSolidAt(x, y)) return { x, y };
+    }
+    return { x: minX + TILE * 2, y: minY + TILE * 2 };
+  };
+
+  const isNearAny = (point, others, minDist) => {
+    return others.some(o => {
+      const dx = o.x - point.x;
+      const dy = o.y - point.y;
+      return dx * dx + dy * dy < minDist * minDist;
+    });
+  };
+
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
     const gateY = 24;
@@ -974,10 +997,20 @@ button:active { transform: translateY(1px); }
 
   const buildNpcInstances = () => {
     state.worldNpcs = npcs.map((npc, idx) => {
-      const zoneOffset = npc.zone * MAP * TILE;
-      const x = zoneOffset + (10 + (idx % 10) * 4) * TILE;
-      const y = (12 + (idx % 6) * 3) * TILE;
-      return { ...npc, x, y, recruited: false };
+      initZoneFlow(npc.zone);
+      const flow = state.zoneFlow[`zone-${npc.zone}`];
+      const rng = getZoneRng(npc.zone + idx * 3);
+      const avoid = [
+        flow.altar,
+        ...flow.orbPositions
+      ];
+      let point = findZonePoint(npc.zone, rng);
+      let attempts = 0;
+      while (isNearAny(point, avoid, TILE * 6) && attempts < 80) {
+        point = findZonePoint(npc.zone, rng);
+        attempts += 1;
+      }
+      return { ...npc, x: point.x, y: point.y, recruited: false };
     });
     state.hubNpcs = [
       { name: 'Mirel', role: 'Marchand HP', dialog: 'Des fioles pour tenir debout.' },
@@ -1003,17 +1036,38 @@ button:active { transform: translateY(1px); }
     const key = `zone-${zone}`;
     if (state.zoneFlow[key]) return;
     const isHub = false;
+    const rng = getZoneRng(zone);
+    const clusterCenter = findZonePoint(zone, rng, 10);
     const orbs = [];
-    for (let i = 0; i < 3; i++) {
+    const orbPositions = [];
+    let attempts = 0;
+    while (orbs.length < 3 && attempts < 120) {
+      attempts += 1;
+      const offsetX = (rng() * 12 - 6) * TILE;
+      const offsetY = (rng() * 12 - 6) * TILE;
+      const point = {
+        x: clusterCenter.x + offsetX,
+        y: clusterCenter.y + offsetY
+      };
+      if (point.x < zone * MAP * TILE + 6 * TILE || point.x > zone * MAP * TILE + (MAP - 6) * TILE) continue;
+      if (point.y < 6 * TILE || point.y > (MAP - 6) * TILE) continue;
+      if (isSolidAt(point.x, point.y)) continue;
+      if (isNearAny(point, orbPositions, TILE * 4)) continue;
+      orbPositions.push(point);
       orbs.push({
-        id: `orb-${zone}-${i}`,
+        id: `orb-${zone}-${orbs.length}`,
         type: 'orb',
-        x: zone * MAP * TILE + (12 + i * 6) * TILE,
-        y: (14 + i * 4) * TILE,
+        x: point.x,
+        y: point.y,
         active: true
       });
     }
-    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
+    const altarPoint = findZonePoint(zone, rng, 8);
+    const altar = { id: `altar-${zone}`, type: 'altar', x: altarPoint.x, y: altarPoint.y, active: false };
+    if (isNearAny(altarPoint, orbPositions, TILE * 10)) {
+      altar.x = clusterCenter.x + 2 * TILE;
+      altar.y = clusterCenter.y + 2 * TILE;
+    }
     const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
     let backGate = null;
     if (zone > 0) {
@@ -1024,6 +1078,7 @@ button:active { transform: translateY(1px); }
     state.zoneFlow[key] = {
       orbsDestroyed: 0,
       altar,
+      orbPositions,
       gate,
       backGate,
       keyDropped: false,
