@@ -426,7 +426,6 @@ class VideoSplitterApp(tk.Tk):
         self.style.configure("Light.TRadiobutton", background="#f5f5f5", foreground="#111111")
         self.style.configure("Light.TEntry", fieldbackground="#ffffff", foreground="#111111")
         self.style.configure("Light.TCombobox", fieldbackground="#ffffff", foreground="#111111")
-        self.style.configure("Light.TProgressbar", background="#4a90e2")
 
         self.style.configure("Dark.TFrame", background="#1f1f1f")
         self.style.configure("Dark.TLabelframe", background="#1f1f1f", foreground="#e6e6e6")
@@ -439,7 +438,6 @@ class VideoSplitterApp(tk.Tk):
         self.style.configure("Dark.TRadiobutton", background="#1f1f1f", foreground="#e6e6e6")
         self.style.configure("Dark.TEntry", fieldbackground="#2b2b2b", foreground="#e6e6e6")
         self.style.configure("Dark.TCombobox", fieldbackground="#2b2b2b", foreground="#e6e6e6")
-        self.style.configure("Dark.TProgressbar", background="#6bb8ff")
 
         labelframe_layout = self.style.layout("TLabelframe")
         if labelframe_layout:
@@ -450,6 +448,16 @@ class VideoSplitterApp(tk.Tk):
         theme_prefix = "Dark" if self.dark_mode.get() else "Light"
         self.configure(background=self.style.lookup(f"{theme_prefix}.TFrame", "background"))
         self._apply_theme_to_widgets(self, theme_prefix)
+        progress_color = "#6bb8ff" if self.dark_mode.get() else "#4a90e2"
+        trough_color = "#2b2b2b" if self.dark_mode.get() else "#e0e0e0"
+        self.style.configure(
+            "Horizontal.TProgressbar",
+            background=progress_color,
+            troughcolor=trough_color,
+            bordercolor=trough_color,
+            lightcolor=progress_color,
+            darkcolor=progress_color,
+        )
         log_bg = "#2b2b2b" if self.dark_mode.get() else "#ffffff"
         log_fg = "#e6e6e6" if self.dark_mode.get() else "#111111"
         self.log_text.config(
@@ -477,8 +485,6 @@ class VideoSplitterApp(tk.Tk):
                 child.configure(style=f"{theme_prefix}.TEntry")
             elif isinstance(child, ttk.Combobox):
                 child.configure(style=f"{theme_prefix}.TCombobox")
-            elif isinstance(child, ttk.Progressbar):
-                child.configure(style=f"{theme_prefix}.TProgressbar")
             self._apply_theme_to_widgets(child, theme_prefix)
 
     def _update_segments_label(self) -> None:
