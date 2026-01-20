@@ -416,8 +416,10 @@ class VideoSplitterApp(tk.Tk):
     def _configure_styles(self) -> None:
         self.style.theme_use("default")
         self.style.configure("Light.TFrame", background="#f5f5f5")
-        self.style.configure("Light.TLabelFrame", background="#f5f5f5", foreground="#111111")
-        self.style.configure("Light.TLabelFrame.Label", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TLabelframe", background="#f5f5f5", foreground="#111111")
+        self.style.configure(
+            "Light.TLabelframe.Label", background="#f5f5f5", foreground="#111111"
+        )
         self.style.configure("Light.TLabel", background="#f5f5f5", foreground="#111111")
         self.style.configure("Light.TButton", background="#f5f5f5", foreground="#111111")
         self.style.configure("Light.TCheckbutton", background="#f5f5f5", foreground="#111111")
@@ -427,8 +429,10 @@ class VideoSplitterApp(tk.Tk):
         self.style.configure("Light.TProgressbar", background="#4a90e2")
 
         self.style.configure("Dark.TFrame", background="#1f1f1f")
-        self.style.configure("Dark.TLabelFrame", background="#1f1f1f", foreground="#e6e6e6")
-        self.style.configure("Dark.TLabelFrame.Label", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TLabelframe", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure(
+            "Dark.TLabelframe.Label", background="#1f1f1f", foreground="#e6e6e6"
+        )
         self.style.configure("Dark.TLabel", background="#1f1f1f", foreground="#e6e6e6")
         self.style.configure("Dark.TButton", background="#2b2b2b", foreground="#e6e6e6")
         self.style.configure("Dark.TCheckbutton", background="#1f1f1f", foreground="#e6e6e6")
@@ -436,6 +440,11 @@ class VideoSplitterApp(tk.Tk):
         self.style.configure("Dark.TEntry", fieldbackground="#2b2b2b", foreground="#e6e6e6")
         self.style.configure("Dark.TCombobox", fieldbackground="#2b2b2b", foreground="#e6e6e6")
         self.style.configure("Dark.TProgressbar", background="#6bb8ff")
+
+        labelframe_layout = self.style.layout("TLabelframe")
+        if labelframe_layout:
+            self.style.layout("Light.TLabelframe", labelframe_layout)
+            self.style.layout("Dark.TLabelframe", labelframe_layout)
 
     def _apply_theme(self) -> None:
         theme_prefix = "Dark" if self.dark_mode.get() else "Light"
@@ -455,7 +464,7 @@ class VideoSplitterApp(tk.Tk):
             if isinstance(child, ttk.Frame):
                 child.configure(style=f"{theme_prefix}.TFrame")
             elif isinstance(child, ttk.LabelFrame):
-                child.configure(style=f"{theme_prefix}.TLabelFrame")
+                child.configure(style=f"{theme_prefix}.TLabelframe")
             elif isinstance(child, ttk.Label):
                 child.configure(style=f"{theme_prefix}.TLabel")
             elif isinstance(child, ttk.Button):
