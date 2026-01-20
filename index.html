@@ -1,4 +1,12 @@
 <!--
+CHANGELOG
+- Ajuste le style UI pour coller au design dark-fantasy (palette, typographies locales, barres).
+- Remplace l’ambiance par une musique procédurale (accords + mélodie) déclenchée après interaction.
+- Corrige le curseur et le tracking souris (évite le décrochage).
+- Réduit la densité de murs et améliore la lisibilité de la carte.
+- Ajoute un loot en orbes lumineuses + pickup stylé.
+- Resserre l’échelle (joueur plus petit, ennemis légèrement plus grands).
+
 README
 ======
 Veyl: Brume-Couronne — RPG dark-fantasy (single-file)
@@ -21,38 +29,38 @@ Fichiers nécessaires:
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <style>
 :root {
-  --bg: #050608;
-  --panel: rgba(10, 12, 18, 0.95);
-  --border: #43495c;
+  --bg-dark: #050505;
+  --ui-bg: rgba(18, 18, 24, 0.95);
+  --ui-border: #4a4a5e;
   --accent: #d4af37;
-  --text: #e6e8ee;
-  --dim: #8b93a8;
   --danger: #ff4d4d;
   --rare: #4d94ff;
   --epic: #a335ee;
   --legend: #ff8000;
+  --text-main: #e0e0e0;
+  --text-dim: #888;
 }
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
-html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; font-family: "Georgia", serif; }
-#wrap { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); }
+html, body { margin: 0; width: 100%; height: 100%; background: var(--bg-dark); color: var(--text-main); overflow: hidden; font-family: "Lato", "Segoe UI", sans-serif; }
+#wrap { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg-dark); }
 canvas { image-rendering: pixelated; background: #020305; border: 2px solid #111; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); pointer-events: auto; }
-.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; max-width: 900px; width: 92%; max-height: 90%; overflow: auto; box-shadow: 0 0 25px rgba(0,0,0,0.8); }
-button { background: linear-gradient(#2b2f3d, #1e2230); border: 1px solid var(--border); color: var(--text); padding: 8px 14px; margin: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
-button:hover { border-color: var(--accent); color: var(--accent); }
+.panel { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: 4px; padding: 20px; max-width: 800px; width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+button { background: linear-gradient(to bottom, #3a3a4a, #2a2a3a); border: 1px solid var(--ui-border); color: var(--text-main); padding: 10px 20px; margin: 5px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; font-size: 14px; font-family: "Cinzel", "Georgia", serif; }
+button:hover { border-color: var(--accent); color: var(--accent); background: #333; }
 button:active { transform: translateY(1px); }
 .hidden { display: none !important; }
 
-#hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+#hud { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 #hud .panel { pointer-events: auto; }
-.bar { height: 10px; background: #111623; border: 1px solid #2a3144; border-radius: 5px; overflow: hidden; }
-.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #7c2d12, #dc2626); }
-.bar.sta > span { background: linear-gradient(90deg, #854d0e, #f59e0b); }
-.bar.mana > span { background: linear-gradient(90deg, #1e3a8a, #3b82f6); }
-.small { font-size: 12px; color: var(--dim); }
+.bar { position: relative; height: 14px; background: #222; margin-bottom: 6px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #8b0000, #ff3333); }
+.bar.sta > span { background: linear-gradient(90deg, #8b6500, #ffcc00); }
+.bar.mana > span { background: linear-gradient(90deg, #00338b, #3388ff); }
+.small { font-size: 12px; color: var(--text-dim); }
 
-#minimap { width: 120px; height: 120px; border: 1px solid var(--border); background: #0b0f16; }
+#minimap { width: 150px; height: 150px; border: 2px solid var(--ui-border); background: #000; opacity: 0.8; }
 
 #toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
 #toast.show { opacity: 1; }
@@ -60,7 +68,7 @@ button:active { transform: translateY(1px); }
 .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tabs button.active { border-color: var(--accent); }
 .list { display: grid; gap: 8px; }
-.item { background: rgba(16,20,28,0.8); border: 1px solid #2a3144; border-radius: 6px; padding: 8px; }
+.item { background: rgba(18,18,24,0.95); border: 1px solid var(--ui-border); border-radius: 4px; padding: 8px; }
 .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
 .tag.common { background: #1f2937; }
 .tag.rare { background: #1e40af; }
@@ -475,24 +483,43 @@ button:active { transform: translateY(1px); }
     ambient(zone) {
       if (!this.enabled || settings.mute) return;
       this.stopMusic();
-      const base = 90 + zone * 10;
-      const chord = [0, 3, 7];
-      this._music = chord.map((offset, i) => {
+      const tempo = 72;
+      const beat = 60 / tempo;
+      const base = 110 + zone * 8;
+      const prog = [0, 8, 3, 10];
+      const melody = [0, 3, 5, 7, 5, 3, 0, -2];
+      let step = 0;
+      this._musicTimer = setInterval(() => {
+        if (settings.mute || !this.enabled) return;
+        const chord = prog[Math.floor(step / 8) % prog.length];
+        const t = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(base * Math.pow(2, offset / 12), this.ctx.currentTime);
-        gain.gain.setValueAtTime(0.015 + i * 0.005, this.ctx.currentTime);
+        osc.frequency.setValueAtTime(base * Math.pow(2, chord / 12), t);
+        gain.gain.setValueAtTime(0.02, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + beat * 2);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
         osc.start();
-        return { osc, gain };
-      });
+        osc.stop(t + beat * 2);
+        const m = melody[step % melody.length];
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(base * Math.pow(2, (chord + m) / 12), t);
+        gain2.gain.setValueAtTime(0.012, t);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, t + beat);
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.start();
+        osc2.stop(t + beat);
+        step += 1;
+      }, beat * 1000);
     },
     stopMusic() {
-      if (!this._music) return;
-      this._music.forEach(n => n.osc.stop());
-      this._music = null;
+      if (this._musicTimer) clearInterval(this._musicTimer);
+      this._musicTimer = null;
     }
   };
 
@@ -515,6 +542,7 @@ button:active { transform: translateY(1px); }
       def: base.def,
       crit: base.crit,
       ranged: clsKey !== 'blade',
+      size: 4,
       speed: base.speed,
       level: 1,
       xp: 0,
@@ -596,6 +624,22 @@ button:active { transform: translateY(1px); }
     state.player.inv.push(item);
     audio.loot();
     showToast(`Loot: ${item.name}`);
+  };
+
+  const rarityColor = (rarity) => {
+    if (rarity === 'rare') return '#4d94ff';
+    if (rarity === 'epic') return '#a335ee';
+    if (rarity === 'legendary') return '#ff8000';
+    return '#e5e7eb';
+  };
+
+  const spawnDrop = (item, x, y) => {
+    state.drops.push({
+      x, y,
+      item,
+      bob: Math.random() * Math.PI * 2,
+      color: rarityColor(item.rarity)
+    });
   };
 
   const createEnemy = (zoneIndex, x, y) => {
@@ -796,8 +840,16 @@ button:active { transform: translateY(1px); }
         if (dx * dx + dy * dy < range * range) {
           e.hp -= Math.max(1, p.atk - e.def);
           audio.hit();
+          if (e.hp <= 0) {
+            state.enemies.splice(i, 1);
+            state.player.xp += 10 + currentZone() * 5;
+            state.gold += 3;
+            if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
+            if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
+          }
         }
       }
+      bossHitCheck(p.atk, p.x, p.y);
       return;
     }
     state.projectiles.push({
@@ -862,8 +914,8 @@ button:active { transform: translateY(1px); }
             state.enemies.splice(j, 1);
             state.player.xp += 10 + currentZone() * 5;
             state.gold += 3;
-            if (Math.random() > 0.85) addItem(rollItem(currentZone()));
-            if (Math.random() > 0.9) addItem({ type: 'potion', name: 'Potion' });
+            if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
+            if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
           }
           break;
         }
@@ -879,6 +931,19 @@ button:active { transform: translateY(1px); }
       prt.y += prt.vy * dt;
       prt.life -= dt;
       if (prt.life <= 0) state.particles.splice(i, 1);
+    }
+  };
+
+  const updateDrops = (dt) => {
+    for (let i = state.drops.length - 1; i >= 0; i--) {
+      const d = state.drops[i];
+      d.bob += dt * 4;
+      const dx = d.x - state.player.x;
+      const dy = d.y - state.player.y;
+      if (dx * dx + dy * dy < 14 * 14) {
+        addItem(d.item);
+        state.drops.splice(i, 1);
+      }
     }
   };
 
@@ -966,6 +1031,7 @@ button:active { transform: translateY(1px); }
     state.spawnTimer = Math.max(0, state.spawnTimer - dt);
     spawnEnemies();
     updateProjectiles(dt);
+    updateDrops(dt);
     checkLevelUp();
     updateBars();
     updateMini();
@@ -1006,9 +1072,9 @@ button:active { transform: translateY(1px); }
     ctx.translate(p.x - camX, p.y - camY);
     ctx.rotate(aim);
     ctx.fillStyle = p.iFrames > 0 ? '#f8fafc' : '#f87171';
-    ctx.fillRect(-4, -4, 8, 8);
+    ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
     ctx.fillStyle = '#cbd5f5';
-    ctx.fillRect(5, -1, 6, 2);
+    ctx.fillRect(p.size + 1, -1, 6, 2);
     ctx.restore();
     state.interactables.forEach(it => {
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
@@ -1016,6 +1082,15 @@ button:active { transform: translateY(1px); }
       else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
       else return;
       ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+    });
+    state.drops.forEach(d => {
+      const bob = Math.sin(d.bob) * 3;
+      ctx.fillStyle = d.color || '#e5e7eb';
+      ctx.beginPath();
+      ctx.arc(d.x - camX, d.y - camY + bob, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(d.x - camX - 1, d.y - camY + bob - 1, 2, 2);
     });
     state.companions.forEach(c => {
       ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
@@ -1040,9 +1115,9 @@ button:active { transform: translateY(1px); }
     ctx.fillStyle = '#ef4444';
     state.enemies.forEach(e => {
       ctx.fillStyle = '#16a34a';
-      ctx.fillRect(e.x - camX - 4, e.y - camY - 4, 8, 8);
+      ctx.fillRect(e.x - camX - 5, e.y - camY - 5, 10, 10);
       ctx.fillStyle = '#ef4444';
-      ctx.fillRect(e.x - camX - 4, e.y - camY - 8, 8 * (e.hp / e.hpMax), 2);
+      ctx.fillRect(e.x - camX - 5, e.y - camY - 10, 10 * (e.hp / e.hpMax), 2);
     });
     ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
     ctx.fillRect(0, 0, W, H);
@@ -1304,9 +1379,9 @@ button:active { transform: translateY(1px); }
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = true;
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
     if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
-    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = true;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
     if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
     if (e.key === ' ') keys.attack = true;
     if (e.key === 'e') keys.interact = true;
@@ -1322,9 +1397,9 @@ button:active { transform: translateY(1px); }
   });
 
   document.addEventListener('keyup', (e) => {
-    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = false;
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = false;
     if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
-    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = false;
     if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
     if (e.key === ' ') keys.attack = false;
     if (e.key === 'e') keys.interact = false;
