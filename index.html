@@ -1020,15 +1020,27 @@ button:active { transform: translateY(1px); }
   };
 
   const ENEMY_TYPES = [
-    { id: 'dash', name: 'Vermine', speed: 70, hp: 0.7, atk: 1, behavior: 'dash' },
-    { id: 'sniper', name: 'Guetteur', speed: 45, hp: 0.8, atk: 1, behavior: 'ranged' },
-    { id: 'tank', name: 'Chevalier Creux', speed: 30, hp: 1.6, atk: 1.4, behavior: 'tank' },
-    { id: 'caster', name: 'Mage du Voile', speed: 35, hp: 1.0, atk: 1.2, behavior: 'caster' },
-    { id: 'flying', name: 'Bête Brumeuse', speed: 60, hp: 1.0, atk: 1.1, behavior: 'flying' }
+    { id: 'dash', name: 'Vermine', speed: 70, hp: 0.7, atk: 1, behavior: 'dash', resist: { ice: 1.1, fire: 0.9, poison: 1.2, lightning: 1.0, arcane: 1.0 } },
+    { id: 'sniper', name: 'Guetteur', speed: 45, hp: 0.8, atk: 1, behavior: 'ranged', resist: { ice: 0.9, fire: 1.1, poison: 1.0, lightning: 1.2, arcane: 1.0 } },
+    { id: 'tank', name: 'Chevalier Creux', speed: 30, hp: 1.7, atk: 1.4, behavior: 'tank', resist: { ice: 0.8, fire: 1.2, poison: 0.9, lightning: 1.0, arcane: 1.1 } },
+    { id: 'caster', name: 'Mage du Voile', speed: 38, hp: 1.0, atk: 1.2, behavior: 'caster', resist: { ice: 1.0, fire: 1.1, poison: 0.8, lightning: 1.2, arcane: 0.9 } },
+    { id: 'flying', name: 'Bête Brumeuse', speed: 62, hp: 1.0, atk: 1.1, behavior: 'flying', resist: { ice: 1.2, fire: 0.9, poison: 1.0, lightning: 1.1, arcane: 1.0 } },
+    { id: 'swarm', name: 'Nuée', speed: 75, hp: 0.5, atk: 0.7, behavior: 'swarm', resist: { ice: 0.9, fire: 1.1, poison: 1.3, lightning: 0.9, arcane: 1.0 } },
+    { id: 'brute', name: 'Briseur', speed: 40, hp: 1.3, atk: 1.6, behavior: 'brute', resist: { ice: 0.9, fire: 1.0, poison: 0.8, lightning: 1.2, arcane: 1.1 } }
   ];
 
-  const createEnemy = (zoneIndex, x, y) => {
-    const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+  const getResistMultiplier = (enemy, element) => {
+    if (!element || !enemy.resist) return 1;
+    return enemy.resist[element] ?? 1;
+  };
+
+  const applySpellDamage = (enemy, amount, element) => {
+    const mult = getResistMultiplier(enemy, element);
+    enemy.hp -= Math.max(1, amount * mult);
+  };
+
+  const createEnemy = (zoneIndex, x, y, forcedType = null) => {
+    const type = forcedType || ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     const hpBase = 50 + zoneIndex * 25;
     return {
       type: type.name,
@@ -1040,6 +1052,7 @@ button:active { transform: translateY(1px); }
       hpMax: Math.floor(hpBase * type.hp),
       atk: Math.floor((6 + zoneIndex * 3) * type.atk),
       def: 1 + zoneIndex,
+      resist: type.resist,
       state: 'patrol',
       cooldown: 0,
       dashCooldown: 0,
@@ -1058,7 +1071,14 @@ button:active { transform: translateY(1px); }
       const x = state.player.x + (Math.random() * 500 - 250);
       const y = state.player.y + (Math.random() * 400 - 200);
       if (!isSolidAt(x, y) && Math.hypot(x - state.player.x, y - state.player.y) > 120) {
-        state.enemies.push(createEnemy(zoneIndex, x, y));
+        const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+        if (type.id === 'swarm') {
+          for (let s = 0; s < 3; s++) {
+            state.enemies.push(createEnemy(zoneIndex, x + s * 8, y + s * 6, type));
+          }
+        } else {
+          state.enemies.push(createEnemy(zoneIndex, x, y, type));
+        }
         state.spawnTimer = 1.2;
       }
     }
@@ -1215,7 +1235,7 @@ button:active { transform: translateY(1px); }
       const e = state.enemies[i];
       if (e.poison > 0) {
         e.poison -= dt;
-        e.hp -= dt * 3;
+        applySpellDamage(e, dt * 3, e.poisonElement || 'poison');
       }
       const dx = p.x - e.x;
       const dy = p.y - e.y;
@@ -1223,7 +1243,11 @@ button:active { transform: translateY(1px); }
       const slow = e.slow > 0 ? 0.5 : 1;
       if (dist2 < 220 * 220) {
         const dist = Math.sqrt(dist2) || 1;
-        const speed = (e.kind === 'tank' ? 25 : e.kind === 'sniper' ? 35 : 45) * slow;
+        const speed = (e.kind === 'tank' ? 25
+          : e.kind === 'sniper' ? 35
+            : e.kind === 'brute' ? 40
+              : e.kind === 'swarm' ? 55
+                : 45) * slow;
         e.vx = (dx / dist) * speed * dt;
         e.vy = (dy / dist) * speed * dt;
         const nx = e.x + e.vx;
@@ -1492,22 +1516,22 @@ button:active { transform: translateY(1px); }
     const { camX, camY } = getCamera();
     const angle = Math.atan2(state.mouse.y + camY - state.player.y, state.mouse.x + camX - state.player.x);
     if (spell.effect === 'bolt') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb' });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb', element: 'lightning' });
     } else if (spell.effect === 'nova') {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
-        if (dx * dx + dy * dy < 80 * 80) e.hp -= 12;
+        if (dx * dx + dy * dy < 80 * 80) applySpellDamage(e, 12, 'arcane');
       });
     } else if (spell.effect === 'ice') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6 });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6, element: 'ice' });
     } else if (spell.effect === 'fire') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire' });
     } else if (spell.effect === 'chain') {
       let target = state.enemies[0];
-      if (target) target.hp -= 14;
-      if (state.enemies[1]) state.enemies[1].hp -= 10;
+      if (target) applySpellDamage(target, 14, 'lightning');
+      if (state.enemies[1]) applySpellDamage(state.enemies[1], 10, 'lightning');
     } else if (spell.effect === 'poison') {
-      state.enemies.forEach(e => { e.poison = 2.5; });
+      state.enemies.forEach(e => { e.poison = 2.5; e.poisonElement = 'poison'; });
     } else if (spell.effect === 'shield') {
       p.def += 4; setTimeout(() => { p.def -= 4; }, 3000);
     } else if (spell.effect === 'blink') {
@@ -1518,7 +1542,7 @@ button:active { transform: translateY(1px); }
         e.y += (p.y - e.y) * 0.1;
       });
     } else if (spell.effect === 'summon') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true });
+      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
     }
   };
 
@@ -1558,13 +1582,23 @@ button:active { transform: translateY(1px); }
         const dx = e.x - pr.x;
         const dy = e.y - pr.y;
         if (dx * dx + dy * dy < 12 * 12) {
-          e.hp -= Math.max(1, pr.dmg - e.def);
+          if (pr.element) {
+            applySpellDamage(e, pr.dmg, pr.element);
+          } else {
+            e.hp -= Math.max(1, pr.dmg - e.def);
+          }
           if (pr.slow) e.slow = pr.slow;
           if (pr.explode) {
             state.enemies.forEach(other => {
               const ex = other.x - pr.x;
               const ey = other.y - pr.y;
-              if (ex * ex + ey * ey < 50 * 50) other.hp -= 8;
+              if (ex * ex + ey * ey < 50 * 50) {
+                if (pr.element) {
+                  applySpellDamage(other, 8, pr.element);
+                } else {
+                  other.hp -= 8;
+                }
+              }
             });
           }
           audio.hit();
