@@ -17,12 +17,19 @@ Application de bureau multiplateforme pour découper une vidéo en segments de d
 
 - Python 3.10+
 - FFmpeg + FFprobe installés et accessibles dans le `PATH`.
+- (Option URL) `yt-dlp` installé et accessible dans le `PATH`.
 
 ### Installer FFmpeg
 
 - **Windows** : https://ffmpeg.org/download.html
 - **macOS** : `brew install ffmpeg`
 - **Linux (Debian/Ubuntu)** : `sudo apt install ffmpeg`
+
+### Installer yt-dlp (option URLs)
+
+```bash
+pip install yt-dlp
+```
 
 ### Alternative sans PATH (option locale)
 
@@ -43,6 +50,7 @@ python main.py
 ## Utilisation
 
 1. Sélectionnez le fichier vidéo.
+   - ou collez un lien YouTube dans le champ dédié.
 2. Choisissez la durée de segment.
 3. Sélectionnez le mode (Rapide ou Précis) et le format de sortie.
 4. Choisissez le dossier de sortie.
@@ -64,6 +72,7 @@ L'application calcule automatiquement le nombre de segments : `ceil(7200 / 360) 
 ## Dépannage
 
 - **FFmpeg introuvable** : vérifiez que `ffmpeg` et `ffprobe` sont accessibles dans votre `PATH`.
+- **Lien YouTube** : installez `yt-dlp` (ou `youtube-dl`) et vérifiez qu'il est dans votre `PATH`.
 - **Coupes non exactes en mode rapide** : le mode rapide utilise `-c copy`, les coupes peuvent dépendre des keyframes.
 - **Permissions** : assurez-vous que le dossier de sortie est accessible en écriture.
 

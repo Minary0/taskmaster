@@ -19,6 +19,10 @@ class FFMpegError(RuntimeError):
     pass
 
 
+class DownloaderError(RuntimeError):
+    pass
+
+
 def ensure_ffmpeg_available() -> tuple[str, str]:
     """Return ffmpeg/ffprobe paths from PATH or local ./bin."""
     ffmpeg = shutil.which("ffmpeg")
@@ -44,6 +48,41 @@ def ensure_ffmpeg_available() -> tuple[str, str]:
         "FFmpeg/FFprobe introuvables. Installe FFmpeg et ajoute-le au PATH, "
         "ou place ffmpeg(.exe) et ffprobe(.exe) dans le dossier ./bin à côté de main.py."
     )
+
+
+def ensure_downloader_available() -> str:
+    downloader = shutil.which("yt-dlp") or shutil.which("youtube-dl")
+    if not downloader:
+        raise FileNotFoundError(
+            "yt-dlp (recommandé) ou youtube-dl est introuvable dans le PATH."
+        )
+    return downloader
+
+
+def download_video(url: str, output_dir: Path, logger: callable) -> Path:
+    downloader = ensure_downloader_available()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    template = str(output_dir / "%(title)s.%(ext)s")
+    command = [
+        downloader,
+        "--no-playlist",
+        "--print",
+        "after_move:filepath",
+        "-o",
+        template,
+        url,
+    ]
+    logger("Téléchargement: " + " ".join(command))
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise DownloaderError(result.stderr.strip() or "Erreur lors du téléchargement.")
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise DownloaderError("Impossible de récupérer le chemin du fichier téléchargé.")
+    downloaded_path = Path(lines[-1])
+    if not downloaded_path.exists():
+        raise DownloaderError("Le fichier téléchargé est introuvable.")
+    return downloaded_path
 
 
 def get_duration_seconds(input_path: Path) -> float:
@@ -79,14 +118,18 @@ def build_ffmpeg_command(
         return [
             ffmpeg_path,
             "-y",
+            "-i",
+            str(input_path),
             "-ss",
             f"{start}",
             "-t",
             f"{duration}",
-            "-i",
-            str(input_path),
             "-c",
             "copy",
+            "-avoid_negative_ts",
+            "1",
+            "-fflags",
+            "+genpts",
             str(output_path),
         ]
     return [
@@ -212,6 +255,7 @@ class VideoSplitterApp(tk.Tk):
         self.worker_thread: threading.Thread | None = None
         self.output_paths: list[Path] = []
         self.total_duration: float | None = None
+        self.source_path: Path | None = None
 
         self._build_ui()
         self.after(150, self._process_queue)
@@ -220,14 +264,23 @@ class VideoSplitterApp(tk.Tk):
         main = ttk.Frame(self, padding=12)
         main.pack(fill=tk.BOTH, expand=True)
 
-        file_frame = ttk.LabelFrame(main, text="Fichier vidéo")
+        file_frame = ttk.LabelFrame(main, text="Fichier vidéo ou URL")
         file_frame.pack(fill=tk.X, pady=6)
+        file_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(file_frame, text="Fichier").grid(row=0, column=0, padx=6, pady=6)
         self.video_path_var = tk.StringVar()
-        ttk.Entry(file_frame, textvariable=self.video_path_var, width=70).pack(
-            side=tk.LEFT, padx=6, pady=6, fill=tk.X, expand=True
+        ttk.Entry(file_frame, textvariable=self.video_path_var, width=70).grid(
+            row=0, column=1, padx=6, pady=6, sticky=tk.EW
         )
-        ttk.Button(file_frame, text="Parcourir", command=self._browse_video).pack(
-            side=tk.RIGHT, padx=6, pady=6
+        ttk.Button(file_frame, text="Parcourir", command=self._browse_video).grid(
+            row=0, column=2, padx=6, pady=6
+        )
+
+        ttk.Label(file_frame, text="Lien YouTube").grid(row=1, column=0, padx=6, pady=6)
+        self.url_var = tk.StringVar()
+        ttk.Entry(file_frame, textvariable=self.url_var, width=70).grid(
+            row=1, column=1, padx=6, pady=6, sticky=tk.EW
         )
 
         duration_frame = ttk.LabelFrame(main, text="Durée du segment")
@@ -349,14 +402,27 @@ class VideoSplitterApp(tk.Tk):
             return
 
         video_path = self.video_path_var.get().strip()
+        url = self.url_var.get().strip()
+        output_dir = self.output_dir_var.get().strip()
         if not video_path:
-            messagebox.showerror("Analyse", "Veuillez sélectionner une vidéo.")
-            return
+            if not url:
+                messagebox.showerror("Analyse", "Veuillez sélectionner une vidéo ou un lien.")
+                return
+            if not output_dir:
+                messagebox.showerror(
+                    "Analyse", "Veuillez choisir un dossier de sortie pour le téléchargement."
+                )
+                return
 
         def run() -> None:
             try:
-                duration = get_duration_seconds(Path(video_path))
-            except (FFMpegError, FileNotFoundError) as exc:
+                if url:
+                    self.event_queue.put(("log", "Téléchargement en cours..."))
+                    self.source_path = download_video(url, Path(output_dir), self._log)
+                else:
+                    self.source_path = Path(video_path)
+                duration = get_duration_seconds(self.source_path)
+            except (FFMpegError, DownloaderError, FileNotFoundError) as exc:
                 self.event_queue.put(("error", str(exc)))
                 return
             self.event_queue.put(("analysis", duration))
@@ -370,10 +436,14 @@ class VideoSplitterApp(tk.Tk):
             return
 
         video_path = self.video_path_var.get().strip()
+        url = self.url_var.get().strip()
         output_dir = self.output_dir_var.get().strip()
-        if not video_path or not output_dir:
+        if not output_dir:
+            messagebox.showerror("Découpage", "Veuillez choisir un dossier de sortie.")
+            return
+        if not video_path and not url:
             messagebox.showerror(
-                "Découpage", "Veuillez choisir un fichier et un dossier de sortie."
+                "Découpage", "Veuillez choisir un fichier ou fournir un lien."
             )
             return
 
@@ -393,9 +463,14 @@ class VideoSplitterApp(tk.Tk):
 
         def run() -> None:
             try:
+                if url:
+                    self.event_queue.put(("log", "Téléchargement en cours..."))
+                    self.source_path = download_video(url, Path(output_dir), self._log)
+                elif self.source_path is None:
+                    self.source_path = Path(video_path)
                 self.output_paths = list(
                     split_video(
-                        Path(video_path),
+                        self.source_path,
                         Path(output_dir),
                         segment_duration,
                         self.mode_var.get(),
@@ -404,7 +479,13 @@ class VideoSplitterApp(tk.Tk):
                         progress=self._progress,
                     )
                 )
-            except (FFMpegError, FileNotFoundError, PermissionError, ValueError) as exc:
+            except (
+                FFMpegError,
+                DownloaderError,
+                FileNotFoundError,
+                PermissionError,
+                ValueError,
+            ) as exc:
                 self.event_queue.put(("error", str(exc)))
                 return
             self.event_queue.put(("done", None))
