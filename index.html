@@ -1,0 +1,1416 @@
+<!--
+README
+======
+Veyl: Brume-Couronne — RPG dark-fantasy (single-file)
+
+Lancer:
+- Double-cliquez index.html (mode fichier).
+- Ou lancez un serveur local (ex: python -m http.server) et ouvrez http://localhost:8000.
+
+Héberger:
+- Itch.io / Netlify: uploadez ce fichier unique index.html.
+
+Fichiers nécessaires:
+- index.html uniquement (HTML+CSS+JS inline, sans dépendance externe).
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Veyl: Brume-Couronne</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>
+:root {
+  --bg: #050608;
+  --panel: rgba(10, 12, 18, 0.95);
+  --border: #43495c;
+  --accent: #d4af37;
+  --text: #e6e8ee;
+  --dim: #8b93a8;
+  --danger: #ff4d4d;
+  --rare: #4d94ff;
+  --epic: #a335ee;
+  --legend: #ff8000;
+}
+* { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
+html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; font-family: "Georgia", serif; }
+#wrap { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); }
+canvas { image-rendering: pixelated; background: #020305; border: 2px solid #111; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+.overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); pointer-events: auto; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; max-width: 900px; width: 92%; max-height: 90%; overflow: auto; box-shadow: 0 0 25px rgba(0,0,0,0.8); }
+button { background: linear-gradient(#2b2f3d, #1e2230); border: 1px solid var(--border); color: var(--text); padding: 8px 14px; margin: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:active { transform: translateY(1px); }
+.hidden { display: none !important; }
+
+#hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+#hud .panel { pointer-events: auto; }
+.bar { height: 10px; background: #111623; border: 1px solid #2a3144; border-radius: 5px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #7c2d12, #dc2626); }
+.bar.sta > span { background: linear-gradient(90deg, #854d0e, #f59e0b); }
+.bar.mana > span { background: linear-gradient(90deg, #1e3a8a, #3b82f6); }
+.small { font-size: 12px; color: var(--dim); }
+
+#minimap { width: 120px; height: 120px; border: 1px solid var(--border); background: #0b0f16; }
+
+#toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
+#toast.show { opacity: 1; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabs button.active { border-color: var(--accent); }
+.list { display: grid; gap: 8px; }
+.item { background: rgba(16,20,28,0.8); border: 1px solid #2a3144; border-radius: 6px; padding: 8px; }
+.tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.tag.common { background: #1f2937; }
+.tag.rare { background: #1e40af; }
+.tag.epic { background: #6d28d9; }
+.tag.legendary { background: #b45309; }
+
+#mobile { position: absolute; inset: 0; display: none; pointer-events: none; }
+#joy { position: absolute; left: 16px; bottom: 16px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid #2a3144; background: rgba(12,16,24,0.6); pointer-events: auto; }
+#joyDot { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(120,130,150,0.8); left: 42px; top: 42px; }
+#mobBtns { position: absolute; right: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, 60px); gap: 8px; pointer-events: auto; }
+.mobBtn { width: 60px; height: 60px; border-radius: 50%; background: rgba(25,30,40,0.7); border: 1px solid #2a3144; display: grid; place-items: center; font-size: 11px; }
+
+@media (hover: none) and (pointer: coarse) {
+  #mobile { display: block; }
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+<div id="ui">
+  <div id="hud">
+    <div class="panel">
+      <div>PV</div>
+      <div class="bar"><span id="hpBar"></span></div>
+      <div>Endurance</div>
+      <div class="bar sta"><span id="staBar"></span></div>
+      <div>Mana</div>
+      <div class="bar mana"><span id="manaBar"></span></div>
+      <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
+    </div>
+    <div class="panel">
+      <div id="zoneText">Zone</div>
+      <div id="questText" class="small">Objectif</div>
+      <canvas id="minimap" width="120" height="120"></canvas>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay" style="display:flex;">
+    <div class="panel" style="text-align:center;">
+      <h1>Veyl: Brume-Couronne</h1>
+      <p>RPG dark-fantasy jouable en navigateur, hors-ligne.</p>
+      <button id="newBtn">Nouvelle partie</button>
+      <button id="contBtn">Continuer</button>
+      <button id="optBtn">Options</button>
+      <button id="creditsBtn">Crédits</button>
+      <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · C: perso · Q: quêtes · ESC: pause</div>
+    </div>
+  </div>
+
+  <div id="classMenu" class="overlay">
+    <div class="panel">
+      <h2>Choix du Marqué</h2>
+      <div id="classList" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+    </div>
+  </div>
+
+  <div id="pauseMenu" class="overlay">
+    <div class="panel" style="text-align:center;">
+      <h2>Pause</h2>
+      <button id="resumeBtn">Reprendre</button>
+      <button id="saveBtn">Sauvegarder</button>
+      <button id="pauseOptBtn">Options</button>
+      <button id="quitBtn">Quitter</button>
+    </div>
+  </div>
+
+  <div id="inventory" class="overlay">
+    <div class="panel">
+      <h2>Inventaire</h2>
+      <div class="tabs">
+        <button data-tab="bag" class="active">Sac</button>
+        <button data-tab="equip">Équipement</button>
+        <button data-tab="craft">Artisanat</button>
+      </div>
+      <div id="bagTab" class="list"></div>
+      <div id="equipTab" class="list hidden"></div>
+      <div id="craftTab" class="hidden">
+        <p>Forge: améliore arme/armure avec matériaux.</p>
+        <button id="forgeBtn">Forger (+1)</button>
+        <p>Enchantement: reroll d'un affixe.</p>
+        <button id="enchantBtn">Enchanter</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="character" class="overlay">
+    <div class="panel">
+      <h2>Fiche Personnage</h2>
+      <div id="statsPanel"></div>
+      <h3>Points à répartir</h3>
+      <div id="pointsPanel"></div>
+      <h3>Talents</h3>
+      <div id="talentsPanel" class="list"></div>
+    </div>
+  </div>
+
+  <div id="journal" class="overlay">
+    <div class="panel">
+      <h2>Journal</h2>
+      <div class="tabs">
+        <button data-tab="quests" class="active">Quêtes</button>
+        <button data-tab="lore">Chroniques</button>
+      </div>
+      <div id="questTab" class="list"></div>
+      <div id="loreTab" class="list hidden"></div>
+    </div>
+  </div>
+
+  <div id="dialogue" class="overlay">
+    <div class="panel">
+      <h2 id="dialogueName">Dialogue</h2>
+      <p id="dialogueText"></p>
+      <div id="dialogueChoices" class="tabs"></div>
+      <button id="dialogueClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="shop" class="overlay">
+    <div class="panel">
+      <h2>Marchand</h2>
+      <div class="small">Or: <span id="shopGold">0</span></div>
+      <div id="shopList" class="list"></div>
+      <button id="shopClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="options" class="overlay">
+    <div class="panel">
+      <h2>Options</h2>
+      <button id="toggleShake"></button>
+      <button id="toggleParticles"></button>
+      <button id="toggleMute"></button>
+      <button id="textSize"></button>
+      <button id="optBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="credits" class="overlay">
+    <div class="panel">
+      <h2>Crédits</h2>
+      <p>Design & développement: vous.</p>
+      <p>Mythes de Veyl, serments brisés, tragédie héroïque.</p>
+      <button id="creditsBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="mobile">
+    <div id="joy"><div id="joyDot"></div></div>
+    <div id="mobBtns">
+      <div class="mobBtn" data-act="attack">ATK</div>
+      <div class="mobBtn" data-act="interact">E</div>
+      <div class="mobBtn" data-act="inventory">INV</div>
+      <div class="mobBtn" data-act="pause">||</div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const mini = document.getElementById('minimap');
+  const mctx = mini.getContext('2d');
+
+  const STORAGE_KEY = 'veyl_save_v3';
+  const SETTINGS_KEY = 'veyl_settings_v3';
+
+  const W = 960;
+  const H = 540;
+  const TILE = 16;
+  const MAP = 64;
+
+  const settings = {
+    shake: true,
+    lowParticles: false,
+    mute: false,
+    textSize: 1
+  };
+
+  const zones = [
+    { id: 0, name: 'Les Marais Cendrés', danger: 1, fog: 0.4 },
+    { id: 1, name: 'Bois du Voile Noir', danger: 2, fog: 0.5 },
+    { id: 2, name: 'Ruines de Caldris', danger: 3, fog: 0.45 },
+    { id: 3, name: 'Cratère des Hymnes', danger: 4, fog: 0.6 },
+    { id: 4, name: 'Citadelle de l\'Astral-Morne', danger: 5, fog: 0.7 }
+  ];
+
+  const classes = {
+    blade: { name: 'Lame', hp: 120, stam: 120, mana: 40, atk: 12, def: 6, crit: 0.05, speed: 120, skill: 'Frappe du Serment' },
+    arcanist: { name: 'Arcaniste', hp: 90, stam: 80, mana: 140, atk: 10, def: 3, crit: 0.08, speed: 110, skill: 'Lance-Voile' },
+    hunter: { name: 'Traqueur', hp: 100, stam: 110, mana: 70, atk: 11, def: 4, crit: 0.12, speed: 130, skill: 'Traque Cendrée' }
+  };
+
+  const talentTrees = {
+    blade: [
+      'Lame scellée (+5% dégâts)', 'Rage contenue (+10 stamina)', 'Frappe lourde (+5% crit)',
+      'Serment ancien (+10 PV)', 'Élan implacable (+1 vitesse)', 'Duel de l\'ombre (+5% dégâts boss)',
+      'Riposte des cendres (+5 défense)', 'Coup d\'abîme (+1 dash)', 'Rappel du fer (+10 PV)',
+      'Frappe du serment II (skill améliorée)'
+    ],
+    arcanist: [
+      'Voile fin (+10 mana)', 'Éclats froids (+5% dégâts mag.)', 'Rune vive (+5% crit)',
+      'Clarté noire (+1 regen mana)', 'Marée astrale (+10 mana)', 'Orbe errant (+1 projectile)',
+      'Décharge (+5% dégâts élite)', 'Spirale du pacte (+1 dash)', 'Voile apaisé (+10 PV)',
+      'Lance-Voile II (skill améliorée)'
+    ],
+    hunter: [
+      'Pisteur (+5% crit)', 'Corde rapide (+1 vitesse)', 'Tir fendu (+5% dégâts)',
+      'Foulée noire (+10 stamina)', 'Précision (crit +5%)', 'Fleur de cendres (+1 projectile)',
+      'Étreinte brumeuse (+5% dégâts boss)', 'Pas du voleur (+1 dash)', 'Souffle vif (+10 PV)',
+      'Traque Cendrée II (skill améliorée)'
+    ]
+  };
+
+  const uniqueItems = [
+    { id: 'u1', name: 'Épée de la Mère-Noyée', slot: 'weapon', desc: 'La lame suinte une eau qui ne reflète rien.' },
+    { id: 'u2', name: 'Corne du Cerf Sans Visage', slot: 'amulet', desc: 'Une prière gravée retourne vers l\'auteur.' },
+    { id: 'u3', name: 'Codex de Caldris', slot: 'ring', desc: 'Chaque page efface un souvenir pour en sauver un autre.' },
+    { id: 'u4', name: 'Chœur Fêlé', slot: 'weapon', desc: 'La vibration blesse l\'âme avant la chair.' },
+    { id: 'u5', name: 'Couronne du Serment Fendu', slot: 'helm', desc: 'Le poids d\'un choix impossible.' },
+    { id: 'u6', name: 'Manteau d\'Elyne', slot: 'armor', desc: 'Les fils gardent la chaleur des vœux.' },
+    { id: 'u7', name: 'Gants du Porte-Cendre', slot: 'gloves', desc: 'Le feu y survit sans brûler.' },
+    { id: 'u8', name: 'Sceau du Sanctuaire', slot: 'amulet', desc: 'Un serment scellé par la brume.' },
+    { id: 'u9', name: 'Bottes du Marqué', slot: 'boots', desc: 'Chaque pas vole un fragment de brume.' },
+    { id: 'u10', name: 'Lanterne d\'Azar', slot: 'ring', desc: 'La flamme éclaire les mensonges.' },
+    { id: 'u11', name: 'Arc du Voile Noir', slot: 'weapon', desc: 'Les flèches suivent la peur.' },
+    { id: 'u12', name: 'Armure d\'Astral-Morne', slot: 'armor', desc: 'Forgée pour un roi qui n\'a jamais régné.' }
+  ];
+
+  const quests = [
+    { id: 'q1', title: 'Serment des Cendres', type: 'main', zone: 0, desc: 'Quitter le sanctuaire en ruine.' },
+    { id: 'q2', title: 'Noyaux de Brume', type: 'main', zone: 0, desc: 'Détruire 3 noyaux dans les Marais.' },
+    { id: 'q3', title: 'La Mère-Noyée', type: 'main', zone: 0, desc: 'Vaincre le boss des Marais.' },
+    { id: 'q4', title: 'Le Voile Noir', type: 'main', zone: 1, desc: 'Trouver Elyne, l\'Éclat Brisé.' },
+    { id: 'q5', title: 'Cerf Sans Visage', type: 'main', zone: 1, desc: 'Vaincre le Cerf.' },
+    { id: 'q6', title: 'Sceaux de Caldris', type: 'main', zone: 2, desc: 'Récupérer 3 sceaux.' },
+    { id: 'q7', title: 'Archiviste Creux', type: 'main', zone: 2, desc: 'Vaincre l\'Archiviste.' },
+    { id: 'q8', title: 'Hymnes brisés', type: 'main', zone: 3, desc: 'Apaiser 3 autels du Cratère.' },
+    { id: 'q9', title: 'Chœur des Fêlés', type: 'main', zone: 3, desc: 'Vaincre le Chœur.' },
+    { id: 'q10', title: 'Roi du Serment Fendu', type: 'main', zone: 4, desc: 'Confronter la Citadelle.' },
+    { id: 's1', title: 'Souvenir fendu', type: 'side', zone: 0, desc: 'Récupérer une bague perdue.' },
+    { id: 's2', title: 'Marchand de cendres', type: 'side', zone: 0, desc: 'Apporter 5 matériaux au marchand.' },
+    { id: 's3', title: 'Chants étouffés', type: 'side', zone: 1, desc: 'Libérer un enfant du voile.' },
+    { id: 's4', title: 'La dette d\'Elyne', type: 'side', zone: 1, desc: 'Choisir d\'aider Elyne.' },
+    { id: 's5', title: 'Cendres du Porteur', type: 'side', zone: 2, desc: 'Trouver Kael.' },
+    { id: 's6', title: 'Cartes brisées', type: 'side', zone: 2, desc: 'Assembler une carte antique.' },
+    { id: 's7', title: 'Litanie du Cratère', type: 'side', zone: 3, desc: 'Sauver un chœur errant.' },
+    { id: 's8', title: 'La voix de pierre', type: 'side', zone: 3, desc: 'Écouter l\'autel silencieux.' },
+    { id: 's9', title: 'Serment des Deux', type: 'side', zone: 4, desc: 'Unir Elyne et Kael.' },
+    { id: 's10', title: 'Le prix du pouvoir', type: 'side', zone: 4, desc: 'Refuser une offrande.' }
+  ];
+
+  const lore = [
+    'La Brume-Couronne naquit d\'un serment sans témoin.',
+    'Les Marqués peuvent porter la corruption sans se briser.',
+    'Le Sanctuaire d\'Aran se dresse au bord de l\'oubli.',
+    'Les morts reviennent creux, privés de mémoire.',
+    'Les Hymnes du Cratère apaisaient jadis les étoiles.',
+    'L\'Ordre de Caldris jurait de garder la vérité.',
+    'Elyne a perdu son éclat dans le Bois Noir.',
+    'Kael est né d\'une prière qui n\'a jamais répondu.',
+    'La Mère-Noyée nourrit la brume avec des promesses.',
+    'Le Cerf Sans Visage garde les chemins de retour.',
+    'L\'Archiviste Creux récite des noms effacés.',
+    'Le Chœur des Fêlés chante pour refermer le ciel.',
+    'Le Roi du Serment Fendu scella la couronne sur lui-même.',
+    'Les anneaux d\'Azar capturent les mensonges.',
+    'Les autels de pierre parlent aux Marqués.',
+    'Les ruines de Caldris sont des pages brisées.',
+    'Chaque noyau détruit réduit la corruption du monde.',
+    'La brume murmure des destinées alternatives.',
+    'Les druides du Voile Noir n\'ont plus de voix.',
+    'La Citadelle Astral-Morne flotte au-dessus d\'une mer vide.',
+    'Les compagnons partagent le fardeau du serment.',
+    'La Couronne promet une paix impossible.',
+    'La Purification exige un sacrifice.',
+    'Le pouvoir corrompt même les Marqués.',
+    'Les pierres du Cratère vibrent aux pleurs du ciel.',
+    'La lueur des sanctuaires repousse les creux.',
+    'Les armes uniques sont des fragments de mythes.',
+    'Les seigneurs de zone sont nés du pacte originel.',
+    'Une étoile se reflète dans chaque lac des Marais.',
+    'Le dernier serment est toujours personnel.'
+  ];
+
+  const npcs = [
+    { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
+    { name: 'Mara des Lisières', role: 'Herboriste', zone: 0, dialog: 'La brume ronge mes récoltes. Prends ce remède.' },
+    { name: 'Serek le Tisseur', role: 'Forgeron', zone: 0, dialog: 'Les métaux chantent encore si on sait écouter.' },
+    { name: 'Nys la Muette', role: 'Oracle', zone: 0, dialog: 'Les marais te veulent vivant, pour l\'instant.' },
+    { name: 'Elyne, l\'Éclat Brisé', role: 'Compagnon', zone: 1, dialog: 'Si je te suis, promets-moi de ne pas mentir.' },
+    { name: 'Kael, le Porte-Cendre', role: 'Compagnon', zone: 2, dialog: 'Je marche pour éteindre ce feu, ou m\'y perdre.' },
+    { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
+    { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
+    { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
+    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' },
+    { name: 'Azar', role: 'Marchand', zone: 0, dialog: 'Mon or vaut plus que ta mémoire, Marqué.' },
+    { name: 'Sage Mir', role: 'Oracle', zone: 4, dialog: 'Le Roi attendait un Marqué.' },
+    { name: 'Tess des Marais', role: 'Survivante', zone: 0, dialog: 'Les noyaux poussent comme des dents.' },
+    { name: 'Ardent Sion', role: 'Chasseur', zone: 1, dialog: 'Le cerf rôde. Ne le regarde pas.' },
+    { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
+  ];
+
+  const state = {
+    running: false,
+    paused: false,
+    time: 0,
+    seed: Math.floor(Math.random() * 1e9),
+    zoneCorruption: [1, 1, 1, 1, 1],
+    clearedZones: 0,
+    player: null,
+    companions: [],
+    enemies: [],
+    projectiles: [],
+    boss: null,
+    interactables: [],
+    zoneFlow: {},
+    drops: [],
+    particles: [],
+    quests: {},
+    loreFound: {},
+    materials: 0,
+    gold: 0,
+    corruptionAbsorbed: 0,
+    npcs: [],
+    bestProgress: 0,
+    spawnTimer: 0,
+    mouse: { x: W / 2, y: H / 2 }
+  };
+
+  const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
+  let joyActive = false;
+  const joyVec = { x: 0, y: 0 };
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const rand = (seed) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0xffffffff;
+    };
+  };
+
+  const noise = (x, y, seed) => {
+    let h = x * 374761393 + y * 668265263 + seed * 1442695041;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+  };
+
+  const tileAt = (tx, ty, zone) => {
+    if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
+    const n = noise(tx, ty, state.seed + zone * 77);
+    if (n < 0.03) return 2; // water
+    if (n < 0.06) return 3; // rock
+    if (n < 0.09 && zone !== 3) return 4; // tree
+    if (n < 0.11 && zone >= 2) return 5; // ruins
+    return 0; // ground
+  };
+
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5;
+
+  const isSolidAt = (x, y) => {
+    const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
+    const tx = Math.floor((x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(y / TILE);
+    return isSolid(tileAt(tx, ty, zoneIndex));
+  };
+
+  const showToast = (msg) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 1400);
+  };
+
+  const audio = {
+    ctx: null,
+    enabled: false,
+    init() {
+      if (this.ctx) return;
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.enabled = true;
+      } catch (err) {
+        this.enabled = false;
+      }
+    },
+    tone(freq, dur, type, vol) {
+      if (!this.enabled || settings.mute) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(t + dur);
+    },
+    hit() { this.tone(180, 0.06, 'sawtooth', 0.08); },
+    loot() { this.tone(620, 0.12, 'sine', 0.1); },
+    menu() { this.tone(520, 0.08, 'triangle', 0.06); },
+    ambient(zone) {
+      if (!this.enabled || settings.mute) return;
+      this.stopMusic();
+      const base = 90 + zone * 10;
+      const chord = [0, 3, 7];
+      this._music = chord.map((offset, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(base * Math.pow(2, offset / 12), this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.015 + i * 0.005, this.ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        return { osc, gain };
+      });
+    },
+    stopMusic() {
+      if (!this._music) return;
+      this._music.forEach(n => n.osc.stop());
+      this._music = null;
+    }
+  };
+
+  const createPlayer = (clsKey) => {
+    const base = classes[clsKey];
+    return {
+      classKey: clsKey,
+      name: base.name,
+      x: 30 * TILE,
+      y: 30 * TILE,
+      vx: 0,
+      vy: 0,
+      hp: base.hp,
+      hpMax: base.hp,
+      stam: base.stam,
+      stamMax: base.stam,
+      mana: base.mana,
+      manaMax: base.mana,
+      atk: base.atk,
+      def: base.def,
+      crit: base.crit,
+      ranged: clsKey !== 'blade',
+      speed: base.speed,
+      level: 1,
+      xp: 0,
+      xpNext: 60,
+      statPoints: 3,
+      stats: { str: 5, agi: 5, spi: 5, vit: 5 },
+      inv: [],
+      equip: { weapon: null, armor: null, helm: null, boots: null, amulet: null, ring: null, gloves: null },
+      potions: 3,
+      dashCooldown: 0,
+      skillCooldown: 0,
+      iFrames: 0,
+      loyalty: { elyne: 0, kael: 0 }
+    };
+  };
+
+  const spawnCompanion = (id) => {
+    const comp = id === 'elyne'
+      ? { id: 'elyne', name: 'Elyne', role: 'support', x: state.player.x - 20, y: state.player.y - 20, hp: 60, hpMax: 60, cooldown: 0, loyalty: 0 }
+      : { id: 'kael', name: 'Kael', role: 'dps', x: state.player.x - 30, y: state.player.y + 20, hp: 80, hpMax: 80, cooldown: 0, loyalty: 0 };
+    state.companions.push(comp);
+  };
+
+  const buildNpcInstances = () => {
+    state.npcs = npcs.map((npc, idx) => {
+      const zoneOffset = npc.zone * MAP * TILE;
+      const x = zoneOffset + (10 + (idx % 10) * 4) * TILE;
+      const y = (12 + (idx % 6) * 3) * TILE;
+      return { ...npc, x, y, recruited: false };
+    });
+  };
+
+  const initZoneFlow = (zone) => {
+    const key = `zone-${zone}`;
+    if (state.zoneFlow[key]) return;
+    const orbs = [];
+    for (let i = 0; i < 3; i++) {
+      orbs.push({
+        id: `orb-${zone}-${i}`,
+        type: 'orb',
+        x: zone * MAP * TILE + (12 + i * 6) * TILE,
+        y: (14 + i * 4) * TILE,
+        active: true
+      });
+    }
+    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
+    const gate = { id: `gate-${zone}`, type: 'gate', x: zone * MAP * TILE + (MAP - 4) * TILE, y: 24 * TILE, locked: true };
+    state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, keyDropped: false, bossDefeated: false };
+    state.interactables.push(...orbs, altar, gate);
+  };
+
+  const rollItem = (zoneIndex) => {
+    const rarityRoll = Math.random();
+    let rarity = 'common';
+    if (rarityRoll > 0.95) rarity = 'legendary';
+    else if (rarityRoll > 0.85) rarity = 'epic';
+    else if (rarityRoll > 0.65) rarity = 'rare';
+    const slots = ['weapon', 'armor', 'helm', 'boots', 'amulet', 'ring'];
+    const slot = slots[Math.floor(Math.random() * slots.length)];
+    const affixes = ['+crit', '+stamina', '+resist brume', '+lifesteal', '+atk', '+def', '+mana regen'];
+    const affix = affixes[Math.floor(Math.random() * affixes.length)];
+    return {
+      id: `it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: `${slot} ${rarity}`,
+      slot,
+      rarity,
+      affix,
+      power: zoneIndex + 1
+    };
+  };
+
+  const addItem = (item) => {
+    if (item.type === 'potion') {
+      state.player.potions = clamp(state.player.potions + 1, 0, 9);
+      showToast('Potion +1');
+      audio.loot();
+      return;
+    }
+    state.player.inv.push(item);
+    audio.loot();
+    showToast(`Loot: ${item.name}`);
+  };
+
+  const createEnemy = (zoneIndex, x, y) => {
+    const types = ['vermine', 'goule', 'chevalier creux', 'bête brumeuse', 'mage du voile'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    return {
+      type: t,
+      x, y,
+      vx: 0,
+      vy: 0,
+      hp: 50 + zoneIndex * 25,
+      hpMax: 50 + zoneIndex * 25,
+      atk: 6 + zoneIndex * 3,
+      def: 1 + zoneIndex,
+      state: 'patrol',
+      cooldown: 0,
+      rare: Math.random() > 0.9 ? 'elite' : 'common'
+    };
+  };
+
+  const currentZone = () => clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
+
+  const spawnEnemies = () => {
+    if (state.spawnTimer > 0) return;
+    if (state.enemies.length >= 12) return;
+    const zoneIndex = currentZone();
+    for (let i = 0; i < 1; i++) {
+      const x = state.player.x + (Math.random() * 500 - 250);
+      const y = state.player.y + (Math.random() * 400 - 200);
+      if (!isSolidAt(x, y) && Math.hypot(x - state.player.x, y - state.player.y) > 120) {
+        state.enemies.push(createEnemy(zoneIndex, x, y));
+        state.spawnTimer = 1.2;
+      }
+    }
+  };
+
+  const updateBars = () => {
+    document.getElementById('hpBar').style.width = `${(state.player.hp / state.player.hpMax) * 100}%`;
+    document.getElementById('staBar').style.width = `${(state.player.stam / state.player.stamMax) * 100}%`;
+    document.getElementById('manaBar').style.width = `${(state.player.mana / state.player.manaMax) * 100}%`;
+    document.getElementById('lvlText').textContent = state.player.level;
+    document.getElementById('goldText').textContent = state.gold;
+    const zone = zones[currentZone()];
+    document.getElementById('zoneText').textContent = zone.name;
+    const flow = state.zoneFlow[`zone-${zone.id}`];
+    const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
+    document.getElementById('questText').textContent = `Objectif: ${obj}`;
+  };
+
+  const updateMini = () => {
+    mctx.clearRect(0, 0, mini.width, mini.height);
+    mctx.fillStyle = '#0b0f16';
+    mctx.fillRect(0, 0, mini.width, mini.height);
+    const scale = mini.width / (MAP * TILE * zones.length);
+    mctx.fillStyle = '#22c55e';
+    mctx.fillRect(state.player.x * scale - 2, state.player.y * scale - 2, 4, 4);
+  };
+
+  const updatePlayer = (dt) => {
+    const p = state.player;
+    let ax = 0; let ay = 0;
+    if (keys.left) ax -= 1;
+    if (keys.right) ax += 1;
+    if (keys.up) ay -= 1;
+    if (keys.down) ay += 1;
+    if (joyActive) { ax += joyVec.x; ay += joyVec.y; }
+    const len = Math.hypot(ax, ay) || 1;
+    ax /= len; ay /= len;
+    p.vx = ax * p.speed * dt;
+    p.vy = ay * p.speed * dt;
+    if (keys.dash && p.stam > 20 && p.dashCooldown <= 0) {
+      p.vx *= 3; p.vy *= 3; p.stam -= 20; p.dashCooldown = 1.2; p.iFrames = 0.2;
+      for (let i = 0; i < 8; i++) {
+        state.particles.push({
+          x: p.x - p.vx * 0.1,
+          y: p.y - p.vy * 0.1,
+          vx: -p.vx * 0.2 + (Math.random() - 0.5) * 30,
+          vy: -p.vy * 0.2 + (Math.random() - 0.5) * 30,
+          life: 0.5,
+          color: '#e5e7eb'
+        });
+      }
+    }
+    p.x += p.vx; p.y += p.vy;
+    p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
+    p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
+    const tx = Math.floor((p.x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(p.y / TILE);
+    if (isSolid(tileAt(tx, ty, currentZone()))) {
+      p.x -= p.vx; p.y -= p.vy;
+    }
+    p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
+    p.mana = clamp(p.mana + dt * 6, 0, p.manaMax);
+    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    p.skillCooldown = Math.max(0, p.skillCooldown - dt);
+    p.iFrames = Math.max(0, p.iFrames - dt);
+  };
+
+  const updateEnemies = (dt) => {
+    const p = state.player;
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      const dist2 = dx * dx + dy * dy;
+      if (dist2 < 180 * 180) {
+        const dist = Math.sqrt(dist2) || 1;
+        e.vx = (dx / dist) * 45 * dt;
+        e.vy = (dy / dist) * 45 * dt;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (!isSolidAt(nx, e.y)) e.x = nx;
+        if (!isSolidAt(e.x, ny)) e.y = ny;
+        if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
+          const dmg = Math.max(1, e.atk - p.def);
+          p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
+          if (p.hp <= 0) { p.hp = p.hpMax; p.x = 30 * TILE; p.y = 30 * TILE; showToast('La brume t\'a rejeté...'); }
+        }
+      } else {
+        e.vx = Math.sin(state.time + i) * 10 * dt;
+        e.vy = Math.cos(state.time + i) * 10 * dt;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (!isSolidAt(nx, e.y)) e.x = nx;
+        if (!isSolidAt(e.x, ny)) e.y = ny;
+      }
+      e.cooldown = Math.max(0, e.cooldown - dt);
+    }
+  };
+
+  const bossHitCheck = (dmg, x, y) => {
+    if (!state.boss) return false;
+    const dx = state.boss.x - x;
+    const dy = state.boss.y - y;
+    if (dx * dx + dy * dy < 16 * 16) {
+      state.boss.hp -= dmg;
+      audio.hit();
+      return true;
+    }
+    return false;
+  };
+
+  const updateBoss = (dt) => {
+    if (!state.boss) return;
+    const b = state.boss;
+    const p = state.player;
+    const dx = p.x - b.x;
+    const dy = p.y - b.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = b.x + (dx / dist) * 20 * dt;
+    const ny = b.y + (dy / dist) * 20 * dt;
+    if (!isSolidAt(nx, b.y)) b.x = nx;
+    if (!isSolidAt(b.x, ny)) b.y = ny;
+    if (dist < 22 && p.iFrames <= 0) {
+      p.hp -= 12; p.iFrames = 0.8;
+    }
+    b.phase = b.hp < b.hpMax * 0.66 ? 2 : b.hp < b.hpMax * 0.33 ? 3 : 1;
+    if (b.hp <= 0) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) flow.keyDropped = true;
+      showToast('Clé obtenue.');
+      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
+      state.boss = null;
+    }
+  };
+
+  const updateCompanions = (dt) => {
+    const p = state.player;
+    state.companions.forEach(c => {
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > 30) { c.x += (dx / dist) * 30 * dt; c.y += (dy / dist) * 30 * dt; }
+      c.cooldown = Math.max(0, c.cooldown - dt);
+      if (c.cooldown <= 0 && state.enemies.length) {
+        const target = state.enemies[0];
+        target.hp -= c.id === 'elyne' ? 4 : 6;
+        c.cooldown = c.id === 'elyne' ? 1.6 : 1.2;
+      }
+      if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.cooldown <= 0) {
+        p.hp = clamp(p.hp + 10, 0, p.hpMax); c.cooldown = 4;
+      }
+    });
+  };
+
+  const doAttack = () => {
+    if (state.player.stam < 10) return;
+    const p = state.player;
+    p.stam -= 10;
+    const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    if (!p.ranged) {
+      const range = 22;
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        if (dx * dx + dy * dy < range * range) {
+          e.hp -= Math.max(1, p.atk - e.def);
+          audio.hit();
+        }
+      }
+      return;
+    }
+    state.projectiles.push({
+      x: p.x,
+      y: p.y,
+      vx: Math.cos(angle) * 240,
+      vy: Math.sin(angle) * 240,
+      life: 1.0,
+      dmg: p.atk + 4
+    });
+  };
+
+  const castSpell = (slot) => {
+    const p = state.player;
+    const spells = {
+      1: { name: 'Éclat', cost: 20, cd: 4, dmg: 14, speed: 240 },
+      2: { name: 'Nova', cost: 30, cd: 6, dmg: 10, radius: 60 },
+      3: { name: 'Chaînes', cost: 25, cd: 8, slow: 0.5 },
+      4: { name: 'Furie', cost: 35, cd: 12, buff: 3 }
+    };
+    const spell = spells[slot];
+    if (!spell || p.skillCooldown > 0 || p.mana < spell.cost) return;
+    p.mana -= spell.cost;
+    p.skillCooldown = spell.cd;
+    if (slot === 1) {
+      const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * spell.speed, vy: Math.sin(angle) * spell.speed, life: 1.2, dmg: spell.dmg + p.stats.spi });
+    } else if (slot === 2) {
+      state.enemies.forEach(e => {
+        const dx = e.x - p.x; const dy = e.y - p.y;
+        if (dx * dx + dy * dy < spell.radius * spell.radius) e.hp -= spell.dmg + p.stats.spi;
+      });
+    } else if (slot === 3) {
+      state.enemies.forEach(e => { e.slow = 1.5; });
+    } else if (slot === 4) {
+      p.atk += 5; p.def += 2; setTimeout(() => { p.atk -= 5; p.def -= 2; }, spell.buff * 1000);
+    }
+  };
+
+  const updateProjectiles = (dt) => {
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+      const pr = state.projectiles[i];
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      pr.life -= dt;
+      if (isSolidAt(pr.x, pr.y)) pr.life = 0;
+      if (!settings.lowParticles && Math.random() > 0.4) {
+        state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: '#facc15' });
+      }
+      if (bossHitCheck(pr.dmg, pr.x, pr.y)) {
+        pr.life = 0;
+      }
+      for (let j = state.enemies.length - 1; j >= 0; j--) {
+        const e = state.enemies[j];
+        const dx = e.x - pr.x;
+        const dy = e.y - pr.y;
+        if (dx * dx + dy * dy < 12 * 12) {
+          e.hp -= Math.max(1, pr.dmg - e.def);
+          audio.hit();
+          pr.life = 0;
+          if (e.hp <= 0) {
+            state.enemies.splice(j, 1);
+            state.player.xp += 10 + currentZone() * 5;
+            state.gold += 3;
+            if (Math.random() > 0.85) addItem(rollItem(currentZone()));
+            if (Math.random() > 0.9) addItem({ type: 'potion', name: 'Potion' });
+          }
+          break;
+        }
+      }
+      if (pr.life <= 0) state.projectiles.splice(i, 1);
+    }
+  };
+
+  const updateParticles = (dt) => {
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const prt = state.particles[i];
+      prt.x += prt.vx * dt;
+      prt.y += prt.vy * dt;
+      prt.life -= dt;
+      if (prt.life <= 0) state.particles.splice(i, 1);
+    }
+  };
+
+  const checkLevelUp = () => {
+    if (state.player.xp >= state.player.xpNext) {
+      state.player.xp -= state.player.xpNext;
+      state.player.level++;
+      state.player.xpNext = Math.floor(state.player.xpNext * 1.2);
+      state.player.statPoints += 2;
+      state.player.hpMax += 10;
+      state.player.hp = state.player.hpMax;
+      showToast('Niveau supérieur!');
+    }
+  };
+
+  const onInteract = () => {
+    const zone = currentZone();
+    initZoneFlow(zone);
+    const flow = state.zoneFlow[`zone-${zone}`];
+    const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.hypot(i.x - state.player.x, i.y - state.player.y) < 24);
+    if (orb) {
+      orb.active = false;
+      flow.orbsDestroyed += 1;
+      showToast(`Noyau détruit ${flow.orbsDestroyed}/3`);
+      if (flow.orbsDestroyed >= 3) {
+        flow.altar.active = true;
+        showToast('L\'autel s\'éveille...');
+      }
+      return;
+    }
+    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < 30 && !state.boss) {
+      state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
+      audio.menu();
+      showToast('Le Seigneur émerge...');
+      return;
+    }
+    if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < 30) {
+      flow.gate.locked = false;
+      showToast('La porte s\'ouvre.');
+      state.player.x = (zone + 1) * MAP * TILE + 20 * TILE;
+      return;
+    }
+    const nearNpc = state.npcs.find(npc => {
+      const dx = npc.x - state.player.x;
+      const dy = npc.y - state.player.y;
+      return dx * dx + dy * dy < 40 * 40;
+    });
+    if (nearNpc) {
+      if (nearNpc.role.toLowerCase().includes('marchand')) {
+        renderShop();
+        openPanel('shop');
+        return;
+      }
+      if (nearNpc.role === 'Compagnon' && !nearNpc.recruited) {
+        openDialogue(nearNpc, nearNpc.dialog, [
+          { label: 'Recruter', onPick: () => { nearNpc.recruited = true; spawnCompanion(nearNpc.name.includes('Elyne') ? 'elyne' : 'kael'); showToast(`${nearNpc.name} rejoint votre serment`); } },
+          { label: 'Refuser', onPick: () => showToast('Vous repoussez sa main.') }
+        ]);
+        return;
+      }
+      openDialogue(nearNpc, nearNpc.dialog, [
+        { label: 'Continuer', onPick: () => openPanel('dialogue') }
+      ]);
+      return;
+    }
+    state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.1, 0, 1);
+    state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
+    showToast('Noyau purifié');
+    if (state.zoneCorruption[zone] <= 0 && state.clearedZones < zone + 1) {
+      state.clearedZones = zone + 1;
+      state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
+      showToast(`Zone purifiée: ${zones[zone].name}`);
+      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
+    }
+  };
+
+  const update = (ts) => {
+    if (!state.running || state.paused) { requestAnimationFrame(update); return; }
+    const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
+    state.time = ts;
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateCompanions(dt);
+    updateBoss(dt);
+    state.spawnTimer = Math.max(0, state.spawnTimer - dt);
+    spawnEnemies();
+    updateProjectiles(dt);
+    checkLevelUp();
+    updateBars();
+    updateMini();
+    updateParticles(dt);
+    draw();
+    requestAnimationFrame(update);
+  };
+
+  const draw = () => {
+    const p = state.player;
+    const zone = zones[currentZone()];
+    ctx.clearRect(0, 0, W, H);
+    const camX = clamp(p.x - W / 2, 0, MAP * zones.length * TILE - W);
+    const camY = clamp(p.y - H / 2, 0, MAP * TILE - H);
+    const startX = Math.floor(camX / TILE);
+    const startY = Math.floor(camY / TILE);
+    const endX = Math.ceil((camX + W) / TILE);
+    const endY = Math.ceil((camY + H) / TILE);
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        const zoneIndex = Math.floor(x / MAP);
+        const t = tileAt(x % MAP, y, zoneIndex);
+        const px = x * TILE - camX;
+        const py = y * TILE - camY;
+        switch (t) {
+          case 0: ctx.fillStyle = '#1a202c'; break;
+          case 2: ctx.fillStyle = '#123a44'; break;
+          case 3: ctx.fillStyle = '#3b3b45'; break;
+          case 4: ctx.fillStyle = '#1f2d1f'; break;
+          case 5: ctx.fillStyle = '#2a2a32'; break;
+          default: ctx.fillStyle = '#0b0f14';
+        }
+        ctx.fillRect(px, py, TILE, TILE);
+      }
+    }
+    const aim = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    ctx.save();
+    ctx.translate(p.x - camX, p.y - camY);
+    ctx.rotate(aim);
+    ctx.fillStyle = p.iFrames > 0 ? '#f8fafc' : '#f87171';
+    ctx.fillRect(-4, -4, 8, 8);
+    ctx.fillStyle = '#cbd5f5';
+    ctx.fillRect(5, -1, 6, 2);
+    ctx.restore();
+    state.interactables.forEach(it => {
+      if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
+      else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
+      else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
+      else return;
+      ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+    });
+    state.companions.forEach(c => {
+      ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
+      ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
+    });
+    state.npcs.forEach(npc => {
+      ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
+      ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
+    });
+    ctx.fillStyle = '#facc15';
+    state.projectiles.forEach(pr => ctx.fillRect(pr.x - camX - 2, pr.y - camY - 2, 4, 4));
+    state.particles.forEach(prt => {
+      ctx.fillStyle = prt.color || '#facc15';
+      ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
+    });
+    if (state.boss) {
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(state.boss.x - camX - 8, state.boss.y - camY - 8, 16, 16);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(state.boss.x - camX - 10, state.boss.y - camY - 14, 20 * (state.boss.hp / state.boss.hpMax), 3);
+    }
+    ctx.fillStyle = '#ef4444';
+    state.enemies.forEach(e => {
+      ctx.fillStyle = '#16a34a';
+      ctx.fillRect(e.x - camX - 4, e.y - camY - 4, 8, 8);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(e.x - camX - 4, e.y - camY - 8, 8 * (e.hp / e.hpMax), 2);
+    });
+    ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Cursor (screen space)
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(state.mouse.x, state.mouse.y, 6, 0, Math.PI * 2);
+    ctx.moveTo(state.mouse.x - 10, state.mouse.y);
+    ctx.lineTo(state.mouse.x + 10, state.mouse.y);
+    ctx.moveTo(state.mouse.x, state.mouse.y - 10);
+    ctx.lineTo(state.mouse.x, state.mouse.y + 10);
+    ctx.stroke();
+  };
+
+  const saveGame = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showToast('Sauvegarde effectuée');
+  };
+
+  const loadGame = () => {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return false;
+    Object.assign(state, JSON.parse(data));
+    state.running = true; state.paused = false;
+    if (!state.npcs || !state.npcs.length) buildNpcInstances();
+    audio.init();
+    audio.ambient(currentZone());
+    hideAll();
+    return true;
+  };
+
+  const hideAll = () => {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('classMenu').style.display = 'none';
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('inventory').style.display = 'none';
+    document.getElementById('character').style.display = 'none';
+    document.getElementById('journal').style.display = 'none';
+    document.getElementById('options').style.display = 'none';
+    document.getElementById('credits').style.display = 'none';
+  };
+
+  const openPanel = (id, pause = true) => {
+    hideAll();
+    document.getElementById(id).style.display = 'flex';
+    state.paused = pause && state.running;
+  };
+
+  const closeOverlay = () => {
+    hideAll();
+    state.paused = false;
+  };
+
+  const renderInventory = () => {
+    const bag = document.getElementById('bagTab');
+    const equip = document.getElementById('equipTab');
+    bag.innerHTML = '';
+    equip.innerHTML = '';
+    state.player.inv.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div><strong>${it.name}</strong> <span class="tag ${it.rarity || 'common'}">${it.rarity || 'unique'}</span></div><div>${it.affix || it.desc || ''}</div><button data-equip="${idx}">Équiper</button>`;
+      bag.appendChild(div);
+    });
+    Object.entries(state.player.equip).forEach(([slot, it]) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div><strong>${slot.toUpperCase()}</strong></div><div>${it ? it.name : 'Vide'}</div>`;
+      equip.appendChild(div);
+    });
+  };
+
+  const renderCharacter = () => {
+    const stats = document.getElementById('statsPanel');
+    const points = document.getElementById('pointsPanel');
+    const talents = document.getElementById('talentsPanel');
+    stats.innerHTML = `
+      <div class="small">Niveau: ${state.player.level}</div>
+      <div class="small">XP: ${state.player.xp}/${state.player.xpNext}</div>
+      <div class="small">Or: ${state.gold}</div>
+      <div class="small">Matériaux: ${state.materials}</div>
+      <div class="small">Potions: ${state.player.potions}</div>
+    `;
+    points.innerHTML = '';
+    ['str','agi','spi','vit'].forEach(stat => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `${stat.toUpperCase()} : ${state.player.stats[stat]} <button data-stat="${stat}">+</button>`;
+      points.appendChild(div);
+    });
+    talents.innerHTML = '';
+    talentTrees[state.player.classKey].forEach((t, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.textContent = `${i + 1}. ${t}`;
+      talents.appendChild(div);
+    });
+  };
+
+  const renderJournal = () => {
+    const questTab = document.getElementById('questTab');
+    const loreTab = document.getElementById('loreTab');
+    questTab.innerHTML = '';
+    loreTab.innerHTML = '';
+    quests.forEach(q => {
+      const done = state.quests[q.id]?.done;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span><div>${q.desc}</div>`;
+      questTab.appendChild(div);
+    });
+    lore.forEach((entry, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>Chronique ${i + 1}</strong><div>${entry}</div>`;
+      loreTab.appendChild(div);
+    });
+  };
+
+  const shopStock = [
+    { name: 'Potion', type: 'potion', price: 15 },
+    { name: 'Amulette ternie', item: { name: 'amulet rare', slot: 'amulet', rarity: 'rare', affix: '+resist brume' }, price: 60 },
+    { name: 'Armure d\'écaille', item: { name: 'armor rare', slot: 'armor', rarity: 'rare', affix: '+def' }, price: 75 }
+  ];
+
+  const openDialogue = (npc, text, choices) => {
+    document.getElementById('dialogueName').textContent = npc.name;
+    document.getElementById('dialogueText').textContent = text || npc.dialog;
+    const list = document.getElementById('dialogueChoices');
+    list.innerHTML = '';
+    choices.forEach(choice => {
+      const btn = document.createElement('button');
+      btn.textContent = choice.label;
+      btn.addEventListener('click', () => {
+        choice.onPick();
+        closeOverlay();
+      });
+      list.appendChild(btn);
+    });
+    openPanel('dialogue');
+  };
+
+  const renderShop = () => {
+    document.getElementById('shopGold').textContent = state.gold;
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    shopStock.forEach((s, idx) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${s.name}</strong> <span class="small">${s.price} or</span>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Acheter';
+      btn.addEventListener('click', () => {
+        if (state.gold < s.price) return showToast('Or insuffisant');
+        state.gold -= s.price;
+        if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
+        if (s.item) addItem({ ...s.item });
+        renderShop();
+      });
+      div.appendChild(btn);
+      list.appendChild(div);
+    });
+  };
+
+  const applySettings = () => {
+    document.documentElement.style.fontSize = settings.textSize === 1 ? '16px' : settings.textSize === 2 ? '18px' : '14px';
+    document.getElementById('toggleShake').textContent = `Screen shake: ${settings.shake ? 'ON' : 'OFF'}`;
+    document.getElementById('toggleParticles').textContent = `Particles: ${settings.lowParticles ? 'LOW' : 'HIGH'}`;
+    document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
+    document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
+  };
+
+  const loadSettings = () => {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) Object.assign(settings, JSON.parse(data));
+    applySettings();
+  };
+
+  const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+  const startGame = (clsKey) => {
+    state.player = createPlayer(clsKey);
+    state.running = true;
+    state.paused = false;
+    state.enemies.length = 0;
+    state.companions.length = 0;
+    state.particles.length = 0;
+    state.drops.length = 0;
+    state.zoneCorruption = [1, 1, 1, 1, 1];
+    state.clearedZones = 0;
+    state.materials = 0;
+    state.gold = 0;
+    state.corruptionAbsorbed = 0;
+    state.quests = {};
+    quests.forEach(q => state.quests[q.id] = { done: false });
+    lore.forEach((_, i) => state.loreFound[i] = false);
+    buildNpcInstances();
+    hideAll();
+    audio.init();
+    audio.ambient(currentZone());
+    showToast('Le serment s\'éveille...');
+  };
+
+  const setTabs = (root, tabs) => {
+    root.querySelectorAll('button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        root.querySelectorAll('button[data-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        tabs.forEach(t => document.getElementById(t).classList.add('hidden'));
+        document.getElementById(btn.dataset.tab + 'Tab').classList.remove('hidden');
+      });
+    });
+  };
+
+  document.getElementById('newBtn').addEventListener('click', () => openPanel('classMenu'));
+  document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
+  document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
+  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('optBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
+  document.getElementById('shopClose').addEventListener('click', closeOverlay);
+  document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
+  document.getElementById('saveBtn').addEventListener('click', saveGame);
+  document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
+
+  document.getElementById('toggleShake').addEventListener('click', () => { settings.shake = !settings.shake; applySettings(); saveSettings(); });
+  document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
+  document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
+  document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
+
+  document.getElementById('forgeBtn').addEventListener('click', () => {
+    if (state.materials < 3) return showToast('Matériaux insuffisants');
+    state.materials -= 3; state.player.atk += 1; state.player.def += 1; showToast('Forge réussie');
+  });
+
+  document.getElementById('enchantBtn').addEventListener('click', () => {
+    if (state.gold < 20) return showToast('Or insuffisant');
+    state.gold -= 20; showToast('Affixe reroll');
+  });
+
+  document.getElementById('bagTab').addEventListener('click', (e) => {
+    if (e.target.matches('button[data-equip]')) {
+      const idx = Number(e.target.dataset.equip);
+      const item = state.player.inv.splice(idx, 1)[0];
+      if (item) state.player.equip[item.slot] = item;
+      renderInventory();
+    }
+  });
+
+  document.getElementById('pointsPanel').addEventListener('click', (e) => {
+    if (!e.target.matches('button[data-stat]')) return;
+    if (state.player.statPoints <= 0) return;
+    const stat = e.target.dataset.stat;
+    state.player.stats[stat] += 1; state.player.statPoints -= 1;
+    renderCharacter();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = true;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
+    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
+    if (e.key === ' ') keys.attack = true;
+    if (e.key === 'e') keys.interact = true;
+    if (e.key === 'Shift') keys.dash = true;
+    if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
+    if (e.key === 'c') { openPanel('character'); renderCharacter(); }
+    if (e.key === 'q') { openPanel('journal'); renderJournal(); }
+    if (e.key === '1') castSpell(1);
+    if (e.key === '2') castSpell(2);
+    if (e.key === '3') castSpell(3);
+    if (e.key === '4') castSpell(4);
+    if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'ArrowUp') keys.up = false;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
+    if (e.key === 'a' || e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
+    if (e.key === ' ') keys.attack = false;
+    if (e.key === 'e') keys.interact = false;
+    if (e.key === 'Shift') keys.dash = false;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  canvas.addEventListener('click', () => { if (state.running) doAttack(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
+  window.addEventListener('blur', () => state.paused = true);
+
+  setInterval(() => {
+    if (!state.running) return;
+    if (keys.attack) doAttack();
+    if (keys.interact) onInteract();
+    if (keys.dash) keys.dash = false;
+    if (state.player.hp < state.player.hpMax * 0.3 && state.player.potions > 0) {
+      state.player.potions--; state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+    }
+  }, 200);
+
+  const joy = document.getElementById('joy');
+  const joyDot = document.getElementById('joyDot');
+  const setJoy = (clientX, clientY) => {
+    const rect = joy.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    const dist = Math.min(Math.hypot(dx, dy), rect.width / 2 - 6);
+    const ang = Math.atan2(dy, dx);
+    joyVec.x = Math.cos(ang) * (dist / (rect.width / 2));
+    joyVec.y = Math.sin(ang) * (dist / (rect.height / 2));
+    joyDot.style.left = `${rect.width / 2 + joyVec.x * 40 - 18}px`;
+    joyDot.style.top = `${rect.height / 2 + joyVec.y * 40 - 18}px`;
+  };
+  joy.addEventListener('pointerdown', (e) => { joyActive = true; setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointermove', (e) => { if (joyActive) setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointerup', () => { joyActive = false; joyVec.x = 0; joyVec.y = 0; joyDot.style.left = '42px'; joyDot.style.top = '42px'; });
+
+  document.querySelectorAll('.mobBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.act;
+      if (action === 'attack') doAttack();
+      if (action === 'interact') onInteract();
+      if (action === 'inventory') { openPanel('inventory'); renderInventory(); }
+      if (action === 'pause') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+    });
+  });
+
+  const resize = () => {
+    const { innerWidth: iw, innerHeight: ih } = window;
+    const ratio = 16 / 9;
+    let w = iw; let h = iw / ratio;
+    if (h > ih) { h = ih; w = ih * ratio; }
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  };
+  window.addEventListener('resize', resize);
+
+  const classList = document.getElementById('classList');
+  Object.entries(classes).forEach(([key, c]) => {
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.innerHTML = `<strong>${c.name}</strong><div>${c.skill}</div><div class="small">PV ${c.hp} · Mana ${c.mana} · ATK ${c.atk}</div><button>Choisir</button>`;
+    card.querySelector('button').addEventListener('click', () => startGame(key));
+    classList.appendChild(card);
+  });
+
+  setTabs(document.getElementById('inventory'), ['bagTab', 'equipTab', 'craftTab']);
+  setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
+
+  loadSettings();
+  resize();
+  openPanel('menu', false);
+  requestAnimationFrame(update);
+
+  // PokiSDK hooks (optional)
+  window.gameplayStart = window.gameplayStart || function () {};
+  window.gameplayStop = window.gameplayStop || function () {};
+  window.requestCommercialBreak = window.requestCommercialBreak || function () {};
+  window.requestRewardedBreak = window.requestRewardedBreak || function () {};
+})();
+</script>
+</body>
+</html>
