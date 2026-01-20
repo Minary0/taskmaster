@@ -236,7 +236,7 @@ button:active { transform: translateY(1px); }
       <div class="guide-grid">
         <div>
           <h3>Lore</h3>
-          <p>Vous êtes un Marqué. Chaque ACT purifie un fragment de la Brume-Couronne. Traversez les 5 zones, trouvez le hub en Z3 pour vous préparer, puis défiez le seigneur en Z5.</p>
+          <p>Vous êtes un Marqué. Chaque ACT purifie un fragment de la Brume-Couronne. Traversez les 5 zones, vainquez le seigneur en Z5 pour ouvrir la déchirure vers le Sanctuaire, puis préparez-vous pour l’acte suivant.</p>
         </div>
         <div>
           <h3>Contrôles</h3>
@@ -336,6 +336,7 @@ button:active { transform: translateY(1px); }
   const H = 540;
   const TILE = 16;
   const MAP = 64;
+  const HUB_MAP = 32;
   const WALL_THICKNESS = 3;
   const DROP_PICKUP_RANGE = 120;
   const NPC_RANGE = 130;
@@ -557,6 +558,14 @@ button:active { transform: translateY(1px); }
     gold: 0,
     corruptionAbsorbed: 0,
     npcs: [],
+    worldNpcs: [],
+    hubNpcs: [],
+    hubInteractables: [],
+    hubMap: null,
+    inHub: false,
+    hubActId: 0,
+    hubReturnPoint: null,
+    lastHubReturnPoint: null,
     bestProgress: 0,
     spawnTimer: 0,
     mouse: { x: W / 2, y: H / 2 },
@@ -592,6 +601,21 @@ button:active { transform: translateY(1px); }
     return ((h ^ (h >> 16)) >>> 0) / 4294967295;
   };
 
+  const buildHubMap = () => {
+    const tiles = Array.from({ length: HUB_MAP }, () => Array(HUB_MAP).fill(7));
+    for (let y = 0; y < HUB_MAP; y++) {
+      for (let x = 0; x < HUB_MAP; x++) {
+        if (x === 0 || y === 0 || x === HUB_MAP - 1 || y === HUB_MAP - 1) {
+          tiles[y][x] = 8;
+          continue;
+        }
+        const r = noise(x, y, state.seed + 999);
+        if (r < 0.05) tiles[y][x] = 2;
+      }
+    }
+    state.hubMap = tiles;
+  };
+
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
     const gateY = 24;
@@ -620,9 +644,20 @@ button:active { transform: translateY(1px); }
     return 0; // ground
   };
 
-  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6;
+  const hubTileAt = (tx, ty) => {
+    if (!state.hubMap) buildHubMap();
+    if (tx < 0 || ty < 0 || tx >= HUB_MAP || ty >= HUB_MAP) return 8;
+    return state.hubMap[ty][tx];
+  };
+
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6 || t === 8;
 
   const isSolidAt = (x, y) => {
+    if (state.inHub) {
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      return isSolid(hubTileAt(tx, ty));
+    }
     const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
     const tx = Math.floor((x % (MAP * TILE)) / TILE);
     const ty = Math.floor(y / TILE);
@@ -640,6 +675,11 @@ button:active { transform: translateY(1px); }
   };
 
   const getCamera = () => {
+    if (state.inHub) {
+      const camX = clamp(state.player.x - W / 2, 0, HUB_MAP * TILE - W);
+      const camY = clamp(state.player.y - H / 2, 0, HUB_MAP * TILE - H);
+      return { camX, camY };
+    }
     const camX = clamp(state.player.x - W / 2, 0, MAP * zones.length * TILE - W);
     const camY = clamp(state.player.y - H / 2, 0, MAP * TILE - H);
     return { camX, camY };
@@ -660,6 +700,7 @@ button:active { transform: translateY(1px); }
   };
 
   const markExplored = () => {
+    if (state.inHub) return;
     const zone = currentZone();
     if (!state.explored[zone]) state.explored[zone] = new Set();
     const tx = Math.floor((state.player.x % (MAP * TILE)) / TILE);
@@ -697,7 +738,13 @@ button:active { transform: translateY(1px); }
     document.getElementById('gameOverZone').textContent = `${acts[actIndex].name} — Zone ${zoneIndex + 1}/5`;
     document.getElementById('gameOverCause').textContent = `Cause: ${state.lastDamageSource || 'Inconnu'}`;
     const checkpoint = state.lastHubCheckpoint || state.lastCheckpoint;
-    document.getElementById('gameOverCheckpoint').textContent = checkpoint ? `Dernier checkpoint: Zone ${checkpoint.zone + 1}` : 'Dernier checkpoint: aucun';
+    if (checkpoint) {
+      document.getElementById('gameOverCheckpoint').textContent = checkpoint.inHub
+        ? `Dernier checkpoint: Sanctuaire (Acte ${checkpoint.act + 1})`
+        : `Dernier checkpoint: Zone ${checkpoint.zone + 1}`;
+    } else {
+      document.getElementById('gameOverCheckpoint').textContent = 'Dernier checkpoint: aucun';
+    }
     document.getElementById('gameOverKills').textContent = state.stats.kills;
     document.getElementById('gameOverLoot').textContent = state.stats.loot;
     document.getElementById('gameOverTime').textContent = formatTime(state.runTime);
@@ -718,14 +765,20 @@ button:active { transform: translateY(1px); }
     state.dead = false;
     state.paused = false;
     const hub = state.lastHubCheckpoint || state.lastCheckpoint;
-    if (hub) {
+    if (hub && hub.inHub) {
+      enterSanctuary(hub.act || 0, state.lastHubReturnPoint || { zoneId: 0, x: 30 * TILE, y: 30 * TILE });
+    } else if (hub) {
+      state.inHub = false;
       state.player.x = hub.x;
       state.player.y = hub.y;
+      audio.ambient(currentZone());
     } else {
+      state.inHub = false;
       state.player.x = 30 * TILE;
       state.player.y = 30 * TILE;
     }
     state.player.hp = state.player.hpMax;
+    state.player.mana = state.player.manaMax;
     hideAll();
   };
 
@@ -754,6 +807,14 @@ button:active { transform: translateY(1px); }
       gold: 0,
       corruptionAbsorbed: 0,
       npcs: [],
+      worldNpcs: [],
+      hubNpcs: [],
+      hubInteractables: [],
+      hubMap: null,
+      inHub: false,
+      hubActId: 0,
+      hubReturnPoint: null,
+      lastHubReturnPoint: null,
       bestProgress: 0,
       spawnTimer: 0,
       mouse: { x: W / 2, y: H / 2 },
@@ -833,6 +894,31 @@ button:active { transform: translateY(1px); }
         step += 1;
       }, beat * 1000);
     },
+    ambientHub(actIndex) {
+      if (!this.enabled || settings.mute) return;
+      this.stopMusic();
+      const tempo = 64;
+      const beat = 60 / tempo;
+      const base = 140 + actIndex * 6;
+      const prog = [0, 5, 7, 3];
+      let step = 0;
+      this._musicTimer = setInterval(() => {
+        if (settings.mute || !this.enabled) return;
+        const chord = prog[Math.floor(step / 6) % prog.length];
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(base * Math.pow(2, chord / 12), t);
+        gain.gain.setValueAtTime(0.018 * settings.volume, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + beat * 2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(t + beat * 2);
+        step += 1;
+      }, beat * 1000);
+    },
     stopMusic() {
       if (this._musicTimer) clearInterval(this._musicTimer);
       this._musicTimer = null;
@@ -887,51 +973,45 @@ button:active { transform: translateY(1px); }
   };
 
   const buildNpcInstances = () => {
-    state.npcs = npcs.map((npc, idx) => {
+    state.worldNpcs = npcs.map((npc, idx) => {
       const zoneOffset = npc.zone * MAP * TILE;
       const x = zoneOffset + (10 + (idx % 10) * 4) * TILE;
       const y = (12 + (idx % 6) * 3) * TILE;
       return { ...npc, x, y, recruited: false };
     });
-    acts.forEach((_, actIndex) => {
-      const hubZone = actIndex * 5 + 2;
-      const hubOffset = hubZone * MAP * TILE;
-      const vendors = [
-        { name: 'Mirel', role: 'Marchand HP', dialog: 'Des fioles pour tenir debout.' },
-        { name: 'Solen', role: 'Marchand Mana', dialog: 'La brume se vend au poids.' },
-        { name: 'Garrin', role: 'Marchand Équipement', dialog: 'Chaque lame a son serment.' },
-        { name: 'Atelier', role: 'Forge', dialog: 'Améliore ton serment.' },
-        { name: 'Revente', role: 'Revente', dialog: 'Je reprends vos artefacts.' }
-      ];
-      vendors.forEach((v, idx) => {
-        state.npcs.push({
-          name: v.name,
-          role: v.role,
-          dialog: v.dialog,
-          zone: hubZone,
-          x: hubOffset + (18 + idx * 4) * TILE,
-          y: 26 * TILE,
-          recruited: false
-        });
-      });
-    });
+    state.hubNpcs = [
+      { name: 'Mirel', role: 'Marchand HP', dialog: 'Des fioles pour tenir debout.' },
+      { name: 'Solen', role: 'Marchand Mana', dialog: 'La brume se vend au poids.' },
+      { name: 'Garrin', role: 'Marchand Équipement', dialog: 'Chaque lame a son serment.' },
+      { name: 'Atelier', role: 'Forge', dialog: 'Améliore ton serment.' },
+      { name: 'Revente', role: 'Revente', dialog: 'Je reprends vos artefacts.' },
+      { name: 'Mère Sere', role: 'Entraîneur', dialog: 'Les serments se reforgent ici.' }
+    ].map((npc, idx) => ({
+      ...npc,
+      zone: 0,
+      x: (12 + idx * 3) * TILE,
+      y: 18 * TILE,
+      recruited: false
+    }));
+    state.npcs = state.worldNpcs;
   };
+
+  const getActiveNpcs = () => (state.inHub ? state.hubNpcs : state.worldNpcs);
+  const getActiveInteractables = () => (state.inHub ? state.hubInteractables : state.interactables);
 
   const initZoneFlow = (zone) => {
     const key = `zone-${zone}`;
     if (state.zoneFlow[key]) return;
-    const isHub = zone % 5 === 2;
+    const isHub = false;
     const orbs = [];
-    if (!isHub) {
-      for (let i = 0; i < 3; i++) {
-        orbs.push({
-          id: `orb-${zone}-${i}`,
-          type: 'orb',
-          x: zone * MAP * TILE + (12 + i * 6) * TILE,
-          y: (14 + i * 4) * TILE,
-          active: true
-        });
-      }
+    for (let i = 0; i < 3; i++) {
+      orbs.push({
+        id: `orb-${zone}-${i}`,
+        type: 'orb',
+        x: zone * MAP * TILE + (12 + i * 6) * TILE,
+        y: (14 + i * 4) * TILE,
+        active: true
+      });
     }
     const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
     const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
@@ -948,13 +1028,11 @@ button:active { transform: translateY(1px); }
       backGate,
       keyDropped: false,
       bossState: { spawned: false, alive: false, defeated: false },
+      riftSpawned: false,
       isHub
     };
     state.interactables.push(...orbs, altar, gate);
     if (backGate) state.interactables.push(backGate);
-    if (isHub) {
-      state.interactables.push({ id: `rest-${zone}`, type: 'rest', x: zone * MAP * TILE + 18 * TILE, y: 24 * TILE });
-    }
   };
 
   const syncBackGate = (zone) => {
@@ -962,6 +1040,38 @@ button:active { transform: translateY(1px); }
     if (!flow || !flow.backGate) return;
     const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
     if (prevFlow && !prevFlow.gate.locked) flow.backGate.locked = false;
+  };
+
+  const enterSanctuary = (actIndex, returnPoint) => {
+    state.inHub = true;
+    state.hubActId = actIndex;
+    state.hubReturnPoint = returnPoint;
+    state.lastHubReturnPoint = returnPoint;
+    if (!state.hubMap) buildHubMap();
+    const hubSpawn = { x: 16 * TILE, y: 20 * TILE };
+    state.hubInteractables = [
+      { id: 'hub-rest', type: 'rest', x: 12 * TILE, y: 20 * TILE },
+      { id: 'hub-return', type: 'rift_return', x: 20 * TILE, y: 20 * TILE }
+    ];
+    state.player.x = hubSpawn.x;
+    state.player.y = hubSpawn.y;
+    state.enemies.length = 0;
+    state.projectiles.length = 0;
+    state.drops.length = 0;
+    state.boss = null;
+    state.spawnTimer = 0;
+    state.lastHubCheckpoint = { x: hubSpawn.x, y: hubSpawn.y, zone: returnPoint.zoneId, inHub: true, act: actIndex };
+    audio.ambientHub(actIndex);
+  };
+
+  const exitSanctuary = () => {
+    if (!state.hubReturnPoint) return;
+    state.inHub = false;
+    state.player.x = state.hubReturnPoint.x;
+    state.player.y = state.hubReturnPoint.y;
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: state.hubReturnPoint.zoneId };
+    state.hubInteractables = [];
+    audio.ambient(currentZone());
   };
 
   const rollItem = (zoneIndex) => {
@@ -1060,9 +1170,13 @@ button:active { transform: translateY(1px); }
     };
   };
 
-  const currentZone = () => clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
+  const currentZone = () => {
+    if (state.inHub && state.hubReturnPoint) return state.hubReturnPoint.zoneId;
+    return clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
+  };
 
   const spawnEnemies = () => {
+    if (state.inHub) return;
     if (state.spawnTimer > 0) return;
     if (state.enemies.length >= 12) return;
     const zoneIndex = currentZone();
@@ -1092,17 +1206,49 @@ button:active { transform: translateY(1px); }
     document.getElementById('lvlText').textContent = state.player.level;
     document.getElementById('goldText').textContent = state.gold;
     const zoneIndex = currentZone();
-    const zone = zones[zoneIndex];
     const actIndex = Math.floor(zoneIndex / 5);
     const zoneLocal = zoneIndex % 5;
-    document.getElementById('zoneText').textContent = `${acts[actIndex].name} — Zone ${zoneLocal + 1}/5`;
-    const flow = state.zoneFlow[`zone-${zone.id}`];
-    const obj = flow ? (flow.isHub ? 'Repos & Commerce' : flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
-    document.getElementById('questText').textContent = `Objectif: ${obj}`;
+    if (state.inHub) {
+      document.getElementById('zoneText').textContent = `Sanctuaire — ${acts[state.hubActId].name}`;
+      document.getElementById('questText').textContent = 'Objectif: Repos & préparation';
+    } else {
+      const zone = zones[zoneIndex];
+      document.getElementById('zoneText').textContent = `${acts[actIndex].name} — Zone ${zoneLocal + 1}/5`;
+      const flow = state.zoneFlow[`zone-${zone.id}`];
+      const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
+      document.getElementById('questText').textContent = `Objectif: ${obj}`;
+    }
   };
 
   const updateMini = () => {
     const zoneIndex = currentZone();
+    if (state.inHub) {
+      const viewTiles = HUB_MAP;
+      const scale = mini.width / (viewTiles * TILE);
+      mctx.clearRect(0, 0, mini.width, mini.height);
+      mctx.fillStyle = '#0b0f16';
+      mctx.fillRect(0, 0, mini.width, mini.height);
+      for (let y = 0; y < HUB_MAP; y++) {
+        for (let x = 0; x < HUB_MAP; x++) {
+          const t = hubTileAt(x, y);
+          if (t === 8) mctx.fillStyle = '#a5f3fc';
+          else if (t === 2) mctx.fillStyle = '#86efac';
+          else mctx.fillStyle = '#22c55e';
+          mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
+        }
+      }
+      const drawDot = (x, y, color, size = 2) => {
+        mctx.fillStyle = color;
+        mctx.fillRect(x * scale - size / 2, y * scale - size / 2, size, size);
+      };
+      getActiveInteractables().forEach(it => {
+        if (it.type === 'rift_return') drawDot(it.x, it.y, '#facc15', 3);
+        if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 3);
+      });
+      getActiveNpcs().forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.6));
+      drawDot(state.player.x, state.player.y, '#22c55e', 3);
+      return;
+    }
     const playerLocalX = state.player.x - zoneIndex * MAP * TILE;
     const playerLocalY = state.player.y;
     const viewTiles = state.minimapZoom;
@@ -1152,11 +1298,12 @@ button:active { transform: translateY(1px); }
     state.interactables.forEach(it => {
       if (Math.floor(it.x / (MAP * TILE)) !== zoneIndex) return;
       if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
+      else if (it.type === 'rift_sanctuary') drawDot(it.x, it.y, '#fef3c7', 2.8);
       else if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 2.6);
       else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
     });
     state.companions.forEach(c => drawDot(c.x, c.y, '#22c55e', 2.2));
-    state.npcs.forEach(npc => {
+    getActiveNpcs().forEach(npc => {
       if (Math.floor(npc.x / (MAP * TILE)) === zoneIndex) drawDot(npc.x, npc.y, '#a3e635', 2.2);
     });
     if (state.boss) drawDot(state.boss.x, state.boss.y, '#a855f7', 3);
@@ -1165,15 +1312,15 @@ button:active { transform: translateY(1px); }
 
   const getInteractableTargets = () => {
     const targets = [];
-    state.interactables.forEach(it => {
+    getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && !it.active) return;
       if (it.type === 'altar' && !it.active) return;
-      if (it.type === 'gate' || it.type === 'rest' || it.type === 'altar' || it.type === 'orb') {
+      if (['gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return'].includes(it.type)) {
         targets.push({ x: it.x, y: it.y, type: it.type });
       }
     });
-    state.drops.forEach(d => targets.push({ x: d.x, y: d.y, type: 'drop' }));
-    state.npcs.forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc', role: npc.role }));
+    if (!state.inHub) state.drops.forEach(d => targets.push({ x: d.x, y: d.y, type: 'drop' }));
+    getActiveNpcs().forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc', role: npc.role }));
     return targets.filter(t => {
       const dx = t.x - state.player.x;
       const dy = t.y - state.player.y;
@@ -1182,6 +1329,8 @@ button:active { transform: translateY(1px); }
           : t.type === 'orb' ? ORB_RANGE
             : t.type === 'altar' ? ALTAR_RANGE
               : t.type === 'rest' ? REST_RANGE
+                : t.type === 'rift_sanctuary' ? GATE_RANGE
+                  : t.type === 'rift_return' ? GATE_RANGE
                 : NPC_RANGE;
       return dx * dx + dy * dy < range * range;
     });
@@ -1213,8 +1362,13 @@ button:active { transform: translateY(1px); }
       }
     }
     p.x += p.vx; p.y += p.vy;
-    p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
-    p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
+    if (state.inHub) {
+      p.x = clamp(p.x, TILE * 2, TILE * (HUB_MAP - 2));
+      p.y = clamp(p.y, TILE * 2, TILE * (HUB_MAP - 2));
+    } else {
+      p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
+      p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
+    }
     if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) {
       p.x -= p.vx;
       if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.x += p.vx;
@@ -1309,7 +1463,7 @@ button:active { transform: translateY(1px); }
   };
 
   const updateBoss = (dt) => {
-    if (!state.boss) return;
+    if (state.inHub || !state.boss) return;
     const b = state.boss;
     const p = state.player;
     // NEW: phase pattern timers + telegraph
@@ -1390,6 +1544,16 @@ button:active { transform: translateY(1px); }
         if (state.clearedZones < zone + 1) {
           state.clearedZones = zone + 1;
           state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
+        }
+        if (!flow.riftSpawned) {
+          const rift = {
+            id: `rift-${zone}`,
+            type: 'rift_sanctuary',
+            x: flow.altar.x + 30,
+            y: flow.altar.y - 20
+          };
+          state.interactables.push(rift);
+          flow.riftSpawned = true;
         }
       }
       showToast('Clé obtenue.');
@@ -1710,7 +1874,7 @@ button:active { transform: translateY(1px); }
   const onInteract = () => {
     if (state.dead) return;
     const zone = currentZone();
-    initZoneFlow(zone);
+    if (!state.inHub) initZoneFlow(zone);
     const flow = state.zoneFlow[`zone-${zone}`];
     const nearest = (items, range) => {
       let best = null;
@@ -1726,13 +1890,25 @@ button:active { transform: translateY(1px); }
       });
       return best;
     };
-    const drop = nearest(state.drops, DROP_PICKUP_RANGE);
+    const drop = state.inHub ? null : nearest(state.drops, DROP_PICKUP_RANGE);
     if (drop) {
       addItem(drop.item);
       state.drops = state.drops.filter(d => d !== drop);
       return;
     }
-    const gate = nearest(state.interactables.filter(i => i.type === 'gate'), GATE_RANGE);
+    const rift = nearest(getActiveInteractables().filter(i => i.type === 'rift_sanctuary' || i.type === 'rift_return'), GATE_RANGE);
+    if (rift) {
+      if (rift.type === 'rift_return') {
+        exitSanctuary();
+        showToast('Retour vers la zone.');
+      } else {
+        const actIndex = Math.floor(zone / 5);
+        enterSanctuary(actIndex, { zoneId: zone, x: state.player.x, y: state.player.y });
+        showToast('Le Sanctuaire vous accueille.');
+      }
+      return;
+    }
+    const gate = nearest(getActiveInteractables().filter(i => i.type === 'gate'), GATE_RANGE);
     if (gate) {
       if (gate.direction === 'forward' && flow.keyDropped && flow.gate.locked) {
         flow.gate.locked = false;
@@ -1744,7 +1920,7 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const orb = nearest(state.interactables.filter(i => i.type === 'orb' && i.active), ORB_RANGE);
+    const orb = nearest(getActiveInteractables().filter(i => i.type === 'orb' && i.active), ORB_RANGE);
     if (orb) {
       orb.active = false;
       flow.orbsDestroyed += 1;
@@ -1757,8 +1933,8 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const altar = nearest(state.interactables.filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
-    if (!flow.isHub && zone % 5 === 4 && altar) {
+    const altar = nearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
+    if (!state.inHub && zone % 5 === 4 && altar) {
       // FIX: boss spawns only once per zone until defeated.
       if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
         state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
@@ -1769,14 +1945,14 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const rest = nearest(state.interactables.filter(i => i.type === 'rest'), REST_RANGE);
-    if (flow.isHub && rest) {
+    const rest = nearest(getActiveInteractables().filter(i => i.type === 'rest'), REST_RANGE);
+    if (state.inHub && rest) {
       state.player.hp = state.player.hpMax;
       state.player.mana = state.player.manaMax;
       showToast('Repos accordé.');
       return;
     }
-    const nearNpc = nearest(state.npcs, NPC_RANGE);
+    const nearNpc = nearest(getActiveNpcs(), NPC_RANGE);
     if (nearNpc) {
       if (nearNpc.role.toLowerCase().includes('marchand')) {
         state.shopType = nearNpc.role.toLowerCase().includes('mana') ? 'mana' : nearNpc.role.toLowerCase().includes('hp') ? 'hp' : nearNpc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
@@ -1787,6 +1963,21 @@ button:active { transform: translateY(1px); }
       if (nearNpc.role === 'Forge') {
         state.player.atk += 1; state.player.def += 1;
         showToast('Amélioration appliquée');
+        return;
+      }
+      if (nearNpc.role === 'Entraîneur') {
+        const costGold = 30;
+        const costMat = 2;
+        if (state.gold < costGold || state.materials < costMat) {
+          showToast('Ressources insuffisantes');
+          return;
+        }
+        state.gold -= costGold;
+        state.materials -= costMat;
+        state.player.hpMax += 6;
+        state.player.atk += 1;
+        state.companions.forEach(c => { c.hpMax += 6; c.hp += 6; });
+        showToast('Entraînement accompli');
         return;
       }
       if (nearNpc.role === 'Revente') {
@@ -1821,13 +2012,18 @@ button:active { transform: translateY(1px); }
       state.activeZone = zoneNow;
     }
     updatePlayer(dt);
-    updateEnemies(dt);
-    updateCompanions(dt);
-    updateBoss(dt);
-    state.spawnTimer = Math.max(0, state.spawnTimer - dt);
-    spawnEnemies();
-    updateProjectiles(dt);
-    updateDrops(dt);
+    if (!state.inHub) {
+      updateEnemies(dt);
+      updateCompanions(dt);
+      updateBoss(dt);
+      state.spawnTimer = Math.max(0, state.spawnTimer - dt);
+      spawnEnemies();
+      updateProjectiles(dt);
+      updateDrops(dt);
+    } else {
+      updateCompanions(dt);
+      state.projectiles.length = 0;
+    }
     checkLevelUp();
     updateBars();
     updateMini();
@@ -1856,17 +2052,24 @@ button:active { transform: translateY(1px); }
     const endY = Math.ceil((camY + H) / TILE);
     for (let y = startY; y < endY; y++) {
       for (let x = startX; x < endX; x++) {
-        const zoneIndex = Math.floor(x / MAP);
-        const t = tileAt(x % MAP, y, zoneIndex);
         const px = x * TILE - camX;
         const py = y * TILE - camY;
+        let t = 0;
+        if (state.inHub) {
+          t = hubTileAt(x, y);
+        } else {
+          const zoneIndex = Math.floor(x / MAP);
+          t = tileAt(x % MAP, y, zoneIndex);
+        }
         switch (t) {
           case 0: ctx.fillStyle = '#1a202c'; break;
-          case 2: ctx.fillStyle = '#123a44'; break;
+          case 2: ctx.fillStyle = state.inHub ? '#86efac' : '#123a44'; break;
           case 3: ctx.fillStyle = '#3b3b45'; break;
           case 4: ctx.fillStyle = '#1f2d1f'; break;
           case 5: ctx.fillStyle = '#2a2a32'; break;
           case 6: ctx.fillStyle = '#7dd3fc'; break;
+          case 7: ctx.fillStyle = '#22c55e'; break;
+          case 8: ctx.fillStyle = '#a5f3fc'; break;
           default: ctx.fillStyle = '#0b0f14';
         }
         ctx.fillRect(px, py, TILE, TILE);
@@ -1882,10 +2085,12 @@ button:active { transform: translateY(1px); }
     drawPlayerSprite(p);
     ctx.globalAlpha = 1;
     ctx.restore();
-    state.interactables.forEach(it => {
+    getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
       else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
       else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
+      else if (it.type === 'rift_sanctuary' || it.type === 'rift_return') ctx.fillStyle = '#fef3c7';
+      else if (it.type === 'rest') ctx.fillStyle = '#22c55e';
       else return;
       ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
     });
@@ -1895,15 +2100,19 @@ button:active { transform: translateY(1px); }
       const label = t.type === 'gate' ? 'Porte'
         : t.type === 'orb' ? 'Noyau'
           : t.type === 'altar' ? 'Autel'
-            : t.type === 'npc' ? (t.role && t.role.toLowerCase().includes('marchand') ? 'Marchand' : 'PNJ')
-              : t.type === 'rest' ? 'Repos'
-                : 'Potion';
+            : t.type === 'rift_sanctuary' ? 'Sanctuaire'
+              : t.type === 'rift_return' ? 'Retour'
+                : t.type === 'npc' ? (t.role && t.role.toLowerCase().includes('marchand') ? 'Marchand' : 'PNJ')
+                  : t.type === 'rest' ? 'Repos'
+                    : 'Potion';
       ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
         : t.type === 'orb' ? '#a855f7'
           : t.type === 'altar' ? '#f59e0b'
-            : t.type === 'npc' ? '#22c55e'
-              : t.type === 'rest' ? '#22c55e'
-                : '#facc15';
+            : t.type === 'rift_sanctuary' ? '#fef3c7'
+              : t.type === 'rift_return' ? '#fef3c7'
+                : t.type === 'npc' ? '#22c55e'
+                  : t.type === 'rest' ? '#22c55e'
+                    : '#facc15';
       ctx.beginPath();
       ctx.arc(sx, sy, 10, 0, Math.PI * 2);
       ctx.stroke();
@@ -1913,15 +2122,17 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = '#cbd5f5';
       ctx.fillText(label, sx + 12, sy + 12);
     });
-    state.drops.forEach(d => {
-      const bob = Math.sin(d.bob) * 3;
-      ctx.fillStyle = d.color || '#e5e7eb';
-      ctx.beginPath();
-      ctx.arc(d.x - camX, d.y - camY + bob, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.fillRect(d.x - camX - 1, d.y - camY + bob - 1, 2, 2);
-    });
+    if (!state.inHub) {
+      state.drops.forEach(d => {
+        const bob = Math.sin(d.bob) * 3;
+        ctx.fillStyle = d.color || '#e5e7eb';
+        ctx.beginPath();
+        ctx.arc(d.x - camX, d.y - camY + bob, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(d.x - camX - 1, d.y - camY + bob - 1, 2, 2);
+      });
+    }
     state.companions.forEach(c => {
       ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
       ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
@@ -1930,7 +2141,7 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = '#22c55e';
       ctx.fillRect(c.x - camX - 6, c.y - camY - 8, 12 * (c.hp / c.hpMax), 2);
     });
-    state.npcs.forEach(npc => {
+    getActiveNpcs().forEach(npc => {
       ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
       ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
     });
@@ -1951,7 +2162,7 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = prt.color || '#facc15';
       ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
     });
-    if (state.boss) {
+    if (state.boss && !state.inHub) {
       ctx.fillStyle = '#1a0f0f';
       ctx.fillRect(10, 10, 220, 10);
       ctx.fillStyle = '#ef4444';
@@ -1967,14 +2178,16 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(state.boss.x - camX - 10, state.boss.y - camY - 14, 20 * (state.boss.hp / state.boss.hpMax), 3);
     }
-    state.enemies.forEach(e => {
-      ctx.fillStyle = '#16a34a';
-      ctx.fillRect(e.x - camX - 5, e.y - camY - 5, 10, 10);
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(e.x - camX - 5, e.y - camY - 10, 10 * (e.hp / e.hpMax), 2);
-    });
-    ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
-    ctx.fillRect(0, 0, W, H);
+    if (!state.inHub) {
+      state.enemies.forEach(e => {
+        ctx.fillStyle = '#16a34a';
+        ctx.fillRect(e.x - camX - 5, e.y - camY - 5, 10, 10);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(e.x - camX - 5, e.y - camY - 10, 10 * (e.hp / e.hpMax), 2);
+      });
+      ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
+      ctx.fillRect(0, 0, W, H);
+    }
 
     // Cursor (screen space)
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
@@ -2012,9 +2225,11 @@ button:active { transform: translateY(1px); }
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.minimapZoom) state.minimapZoom = 20;
     if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
+    if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
     if (!state.lastDamageSource) state.lastDamageSource = 'Inconnu';
     Object.values(state.zoneFlow || {}).forEach(flow => {
       if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
+      if (!flow.riftSpawned) flow.riftSpawned = false;
     });
     if (state.boss) {
       const zone = currentZone();
@@ -2024,9 +2239,15 @@ button:active { transform: translateY(1px); }
         flow.bossState.alive = true;
       }
     }
-    if (!state.npcs || !state.npcs.length) buildNpcInstances();
+    if (!state.worldNpcs || !state.worldNpcs.length) buildNpcInstances();
+    state.npcs = state.worldNpcs;
+    if (state.inHub && !state.hubMap) buildHubMap();
     audio.init();
-    audio.ambient(currentZone());
+    if (state.inHub) {
+      audio.ambientHub(state.hubActId || 0);
+    } else {
+      audio.ambient(currentZone());
+    }
     hideAll();
     return true;
   };
@@ -2262,6 +2483,28 @@ button:active { transform: translateY(1px); }
       div.appendChild(btn);
       list.appendChild(div);
     });
+    if (state.player.inv.length) {
+      const header = document.createElement('div');
+      header.className = 'item';
+      header.innerHTML = '<strong>Vendre</strong>';
+      list.appendChild(header);
+      state.player.inv.forEach((it, idx) => {
+        if (it.type === 'potion' || it.type === 'mana_potion') return;
+        const sellPrice = 5 + (it.power || 1) * (it.rarity === 'legendary' ? 10 : it.rarity === 'epic' ? 6 : it.rarity === 'rare' ? 4 : 2);
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<strong>${it.name}</strong> <span class="small">${sellPrice} or</span>`;
+        const btn = document.createElement('button');
+        btn.textContent = 'Vendre';
+        btn.addEventListener('click', () => {
+          state.gold += sellPrice;
+          state.player.inv.splice(idx, 1);
+          renderShop();
+        });
+        div.appendChild(btn);
+        list.appendChild(div);
+      });
+    }
   };
 
   const applySettings = () => {
@@ -2288,6 +2531,12 @@ button:active { transform: translateY(1px); }
     state.dead = false;
     state.lastDamageSource = 'Inconnu';
     state.activeZone = 0;
+    state.inHub = false;
+    state.hubActId = 0;
+    state.hubReturnPoint = null;
+    state.lastHubReturnPoint = null;
+    state.hubInteractables = [];
+    state.hubMap = null;
     state.runTime = 0;
     state.stats = { kills: 0, loot: 0 };
     state.explored = {};
