@@ -644,13 +644,22 @@ button:active { transform: translateY(1px); }
     const gateY = 24;
     // Taller door opening so the passage is longer and easier to cross.
     const doorSpan = 5;
+    const doorDepth = WALL_THICKNESS * 3;
     const inDoorY = Math.abs(ty - gateY) <= doorSpan;
     // Ice walls are continuous; only doors can open passages between zones.
     const flow = state.zoneFlow[`zone-${zone}`];
     const doorLocked = (gateRef) => {
       if (!inDoorY) return null;
+      if (!flow || !gateRef) return null;
+      if (!gateRef.locked) {
+        if (gateRef.direction === 'forward') {
+          return tx >= MAP - WALL_THICKNESS - doorDepth ? 0 : null;
+        }
+        if (gateRef.direction === 'back') {
+          return tx <= WALL_THICKNESS - 1 + doorDepth ? 0 : null;
+        }
+      }
       if (tx < MAP - WALL_THICKNESS && tx > WALL_THICKNESS - 1) return null;
-      if (flow && gateRef) return gateRef.locked ? 6 : 0;
       return 6;
     };
     const forwardDoor = doorLocked(flow ? flow.gate : null);
