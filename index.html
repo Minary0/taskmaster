@@ -642,8 +642,8 @@ button:active { transform: translateY(1px); }
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
     const gateY = 24;
-    // Wider door opening so both ice wall bands clear a larger passage.
-    const doorSpan = 2;
+    // Taller door opening so the passage is longer and easier to cross.
+    const doorSpan = 5;
     const inDoorY = Math.abs(ty - gateY) <= doorSpan;
     // Ice walls are continuous; only doors can open passages between zones.
     const flow = state.zoneFlow[`zone-${zone}`];
