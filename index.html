@@ -1159,6 +1159,8 @@ button:active { transform: translateY(1px); }
     document.getElementById('journal').style.display = 'none';
     document.getElementById('options').style.display = 'none';
     document.getElementById('credits').style.display = 'none';
+    document.getElementById('dialogue').style.display = 'none';
+    document.getElementById('shop').style.display = 'none';
   };
 
   const openPanel = (id, pause = true) => {
@@ -1301,6 +1303,7 @@ button:active { transform: translateY(1px); }
 
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
+    state.player.ranged = clsKey !== 'blade';
     state.running = true;
     state.paused = false;
     state.enemies.length = 0;
@@ -1384,7 +1387,7 @@ button:active { transform: translateY(1px); }
     if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
     if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
     if (e.key === ' ') keys.attack = true;
-    if (e.key === 'e') keys.interact = true;
+    if (e.key.toLowerCase() === 'e') keys.interact = true;
     if (e.key === 'Shift') keys.dash = true;
     if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
     if (e.key === 'c') { openPanel('character'); renderCharacter(); }
@@ -1402,7 +1405,7 @@ button:active { transform: translateY(1px); }
     if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = false;
     if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
     if (e.key === ' ') keys.attack = false;
-    if (e.key === 'e') keys.interact = false;
+    if (e.key.toLowerCase() === 'e') keys.interact = false;
     if (e.key === 'Shift') keys.dash = false;
   });
 
@@ -1411,7 +1414,7 @@ button:active { transform: translateY(1px); }
     state.mouse.x = (e.clientX - rect.left) / rect.width * W;
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
   });
-  canvas.addEventListener('click', () => { if (state.running) doAttack(); });
+  canvas.addEventListener('pointerdown', () => { if (state.running) doAttack(); });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
   window.addEventListener('blur', () => state.paused = true);
