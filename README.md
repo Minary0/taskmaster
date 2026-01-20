@@ -59,6 +59,7 @@ L'application calcule automatiquement le nombre de segments : `ceil(7200 / 360) 
 
 ## Structure du projet
 
-- `main.py` : UI Tkinter + orchestration.
-- `splitter.py` : logique de découpe (FFmpeg/FFprobe).
-- `utils.py` : validation, formatage, nommage.
+- `main.py` : point d'entrée de l'application.
+- `video_splitter/app.py` : UI Tkinter + orchestration.
+- `video_splitter/splitter.py` : logique de découpe (FFmpeg/FFprobe).
+- `video_splitter/utils.py` : validation, formatage, nommage.

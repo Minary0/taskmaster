@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Iterable
 
-from utils import build_output_name, estimate_segments, validate_paths
+from video_splitter.utils import build_output_name, estimate_segments, validate_paths
 
 
 class FFMpegError(RuntimeError):
