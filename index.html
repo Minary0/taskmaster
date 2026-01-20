@@ -1,0 +1,2498 @@
+<!--
+CHANGELOG
+- Ajuste le style UI pour coller au design dark-fantasy (palette, typographies locales, barres).
+- Remplace l’ambiance par une musique procédurale (accords + mélodie) déclenchée après interaction.
+- Corrige le curseur et le tracking souris (évite le décrochage).
+- Réduit la densité de murs et améliore la lisibilité de la carte.
+- Ajoute un loot en orbes lumineuses + pickup stylé.
+- Resserre l’échelle (joueur plus petit, ennemis légèrement plus grands).
+
+README
+======
+Veyl: Brume-Couronne — RPG dark-fantasy (single-file)
+
+Lancer:
+- Double-cliquez index.html (mode fichier).
+- Ou lancez un serveur local (ex: python -m http.server) et ouvrez http://localhost:8000.
+
+Héberger:
+- Itch.io / Netlify: uploadez ce fichier unique index.html.
+
+Fichiers nécessaires:
+- index.html uniquement (HTML+CSS+JS inline, sans dépendance externe).
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>VEYL REFORGED — L’Écho des Cendres</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>
+:root {
+  --bg-dark: #050505;
+  --ui-bg: rgba(18, 18, 24, 0.95);
+  --ui-border: #4a4a5e;
+  --accent: #d4af37;
+  --danger: #ff4d4d;
+  --rare: #4d94ff;
+  --epic: #a335ee;
+  --legend: #ff8000;
+  --text-main: #e0e0e0;
+  --text-dim: #888;
+}
+* { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
+html, body { margin: 0; width: 100%; height: 100%; background: var(--bg-dark); color: var(--text-main); overflow: hidden; font-family: "Lato", "Segoe UI", sans-serif; }
+#wrap { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg-dark); }
+canvas { image-rendering: pixelated; background: #020305; border: 2px solid #111; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+.overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); pointer-events: auto; }
+.panel { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: 4px; padding: 20px; max-width: 800px; width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+button { background: linear-gradient(to bottom, #3a3a4a, #2a2a3a); border: 1px solid var(--ui-border); color: var(--text-main); padding: 10px 20px; margin: 5px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; font-size: 14px; font-family: "Cinzel", "Georgia", serif; }
+button:hover { border-color: var(--accent); color: var(--accent); background: #333; }
+button:active { transform: translateY(1px); }
+.hidden { display: none !important; }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.preview-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.preview-box { width: 18px; height: 18px; border: 1px solid #2c2c3c; background: #111827; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+.preview-ring { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #2c2c3c; background: #111827; }
+
+#hud { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+#hud .panel { pointer-events: auto; }
+.bar { position: relative; height: 14px; background: #222; margin-bottom: 6px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #8b0000, #ff3333); }
+.bar.sta > span { background: linear-gradient(90deg, #8b6500, #ffcc00); }
+.bar.mana > span { background: linear-gradient(90deg, #00338b, #3388ff); }
+.small { font-size: 12px; color: var(--text-dim); }
+
+#minimap { width: 150px; height: 150px; border: 2px solid var(--ui-border); background: #000; opacity: 0.8; }
+#spell-wheel { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); pointer-events: auto; }
+#spell-wheel .wheel { position: relative; width: 240px; height: 240px; border-radius: 50%; border: 1px solid #3a3a4e; background: rgba(10,10,16,0.85); box-shadow: 0 0 18px rgba(0,0,0,0.8); }
+#spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: grid; place-items: center; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
+#spell-wheel .slot:hover { border-color: var(--accent); color: var(--accent); }
+#spell-wheel .slot.top { top: -10px; left: 75px; }
+#spell-wheel .slot.left { left: -10px; top: 75px; }
+#spell-wheel .slot.right { right: -10px; top: 75px; }
+#spell-wheel .center { position: absolute; inset: 70px; border-radius: 50%; border: 1px solid #2a2a3a; display: grid; place-items: center; font-size: 12px; color: var(--text-dim); }
+#debug { position: absolute; left: 12px; bottom: 12px; background: rgba(10,10,16,0.8); border: 1px solid #2a3144; padding: 8px; font-size: 11px; display: none; pointer-events: auto; }
+
+#toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
+#toast.show { opacity: 1; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabs button.active { border-color: var(--accent); }
+.list { display: grid; gap: 8px; }
+.inv-layout { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 10px; }
+.inv-center { display: grid; place-items: center; min-height: 160px; border: 1px solid var(--ui-border); background: rgba(10,10,16,0.7); }
+.inv-slot { border: 1px solid #2c2c3c; background: #0b0f16; padding: 6px; min-height: 48px; }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; margin-top: 10px; }
+.inv-cell { width: 60px; height: 60px; border: 1px solid #2c2c3c; background: #111827; display: grid; place-items: center; font-size: 11px; }
+.inv-cell.rare { border-color: var(--rare); }
+.inv-cell.epic { border-color: var(--epic); }
+.inv-cell.legendary { border-color: var(--legend); }
+.item { background: rgba(18,18,24,0.95); border: 1px solid var(--ui-border); border-radius: 4px; padding: 8px; }
+.tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.tag.common { background: #1f2937; }
+.tag.rare { background: #1e40af; }
+.tag.epic { background: #6d28d9; }
+.tag.legendary { background: #b45309; }
+
+#mobile { position: absolute; inset: 0; display: none; pointer-events: none; }
+#joy { position: absolute; left: 16px; bottom: 16px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid #2a3144; background: rgba(12,16,24,0.6); pointer-events: auto; }
+#joyDot { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(120,130,150,0.8); left: 42px; top: 42px; }
+#mobBtns { position: absolute; right: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, 60px); gap: 8px; pointer-events: auto; }
+.mobBtn { width: 60px; height: 60px; border-radius: 50%; background: rgba(25,30,40,0.7); border: 1px solid #2a3144; display: grid; place-items: center; font-size: 11px; }
+
+@media (hover: none) and (pointer: coarse) {
+  #mobile { display: block; }
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+<div id="ui">
+  <div id="hud">
+    <div class="panel">
+      <div>PV</div>
+      <div class="bar"><span id="hpBar"></span></div>
+      <div>Endurance</div>
+      <div class="bar sta"><span id="staBar"></span></div>
+      <div>Mana</div>
+      <div class="bar mana"><span id="manaBar"></span></div>
+      <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
+    </div>
+    <div class="panel">
+      <div id="zoneText">Zone</div>
+      <div id="questText" class="small">Objectif</div>
+      <canvas id="minimap" width="120" height="120"></canvas>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay" style="display:flex;">
+    <div class="panel" style="text-align:center;">
+      <h1>VEYL REFORGED</h1>
+      <h2>L’Écho des Cendres</h2>
+      <p>RPG dark-fantasy jouable en navigateur, hors-ligne.</p>
+      <button id="newBtn">Nouvelle partie</button>
+      <button id="contBtn">Continuer</button>
+      <button id="guideBtn">Guide</button>
+      <button id="optBtn">Options</button>
+      <button id="creditsBtn">Crédits</button>
+      <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · C: perso · Q: quêtes · ESC: pause</div>
+    </div>
+  </div>
+
+  <div id="classMenu" class="overlay">
+    <div class="panel">
+      <h2>Choix du Marqué</h2>
+      <div id="classList" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+    </div>
+  </div>
+
+  <div id="pauseMenu" class="overlay">
+    <div class="panel" style="text-align:center;">
+      <h2>Pause</h2>
+      <button id="resumeBtn">Reprendre</button>
+      <button id="saveBtn">Sauvegarder</button>
+      <button id="pauseOptBtn">Options</button>
+      <button id="quitBtn">Quitter</button>
+    </div>
+  </div>
+
+  <div id="inventory" class="overlay">
+    <div class="panel">
+      <h2>Inventaire</h2>
+      <div class="tabs">
+        <button data-tab="equip" class="active">Équipement</button>
+        <button data-tab="consumables">Consommables</button>
+        <button data-tab="allies">Alliés</button>
+        <button data-tab="quests">Quêtes</button>
+      </div>
+      <div id="equipTab" class="list"></div>
+      <div id="consumablesTab" class="list hidden"></div>
+      <div id="alliesTab" class="list hidden"></div>
+      <div id="questsTab" class="list hidden"></div>
+    </div>
+  </div>
+
+  <div id="character" class="overlay">
+    <div class="panel">
+      <h2>Fiche Personnage</h2>
+      <div id="statsPanel"></div>
+      <h3>Points à répartir</h3>
+      <div id="pointsPanel"></div>
+      <h3>Talents</h3>
+      <div id="talentsPanel" class="list"></div>
+    </div>
+  </div>
+
+  <div id="journal" class="overlay">
+    <div class="panel">
+      <h2>Journal</h2>
+      <div class="tabs">
+        <button data-tab="quests" class="active">Quêtes</button>
+        <button data-tab="lore">Chroniques</button>
+      </div>
+      <div id="questTab" class="list"></div>
+      <div id="loreTab" class="list hidden"></div>
+    </div>
+  </div>
+
+  <div id="dialogue" class="overlay">
+    <div class="panel">
+      <h2 id="dialogueName">Dialogue</h2>
+      <p id="dialogueText"></p>
+      <div id="dialogueChoices" class="tabs"></div>
+      <button id="dialogueClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="shop" class="overlay">
+    <div class="panel">
+      <h2>Marchand</h2>
+      <div class="small">Or: <span id="shopGold">0</span></div>
+      <div id="shopList" class="list"></div>
+      <button id="shopClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="options" class="overlay">
+    <div class="panel">
+      <h2>Options</h2>
+      <label class="small">Volume musique</label>
+      <input id="musicVolume" type="range" min="0" max="100" value="60" />
+      <button id="toggleShake"></button>
+      <button id="toggleParticles"></button>
+      <button id="toggleMute"></button>
+      <button id="textSize"></button>
+      <button id="optBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="guide" class="overlay">
+    <div class="panel">
+      <h2>Guide du Marqué</h2>
+      <div class="guide-grid">
+        <div>
+          <h3>Lore</h3>
+          <p>Vous êtes un Marqué. Chaque ACT purifie un fragment de la Brume-Couronne. Traversez les 5 zones, trouvez le hub en Z3 pour vous préparer, puis défiez le seigneur en Z5.</p>
+        </div>
+        <div>
+          <h3>Contrôles</h3>
+          <div class="small">ZQSD / Flèches : bouger</div>
+          <div class="small">Souris : attaquer</div>
+          <div class="small">E : interagir</div>
+          <div class="small">R / clic droit : roue de sorts</div>
+          <div class="small">I : inventaire · C : perso · Q : quêtes</div>
+        </div>
+        <div>
+          <h3>Sorts (aperçu)</h3>
+          <div class="preview-row"><span class="preview-ring" style="background:#60a5fa;"></span> Bolt (projectile)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#a855f7;"></span> Nova (AOE)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#38bdf8;"></span> Ice Spike (ralentit)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#f97316;"></span> Fireball (explosion)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#22c55e;"></span> Shield / Summon</div>
+        </div>
+        <div>
+          <h3>Ennemis (aperçu)</h3>
+          <div class="preview-row"><span class="preview-box" style="background:#16a34a;"></span> Mêlée (dash)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#ef4444;"></span> Sniper (tir)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#6b7280;"></span> Tank (lent)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#a855f7;"></span> Caster (AOE)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#38bdf8;"></span> Volant (ignore obstacles)</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <button id="guideClose">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="credits" class="overlay">
+    <div class="panel">
+      <h2>Crédits</h2>
+      <p>Design & développement: vous.</p>
+      <p>Mythes de Veyl, serments brisés, tragédie héroïque.</p>
+      <button id="creditsBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="gameOver" class="overlay">
+    <div class="panel" style="text-align:center;">
+      <h2>GAME OVER</h2>
+      <div class="small">Progression histoire: <strong id="gameOverProgress">0%</strong> <span id="gameOverProgressNote"></span></div>
+      <div class="small" id="gameOverZone">Zone</div>
+      <div class="small" id="gameOverCause">Cause</div>
+      <div class="small" id="gameOverCheckpoint">Checkpoint</div>
+      <div class="list" style="margin-top:10px;">
+        <div class="item">Kills: <strong id="gameOverKills">0</strong></div>
+        <div class="item">Loot ramassé: <strong id="gameOverLoot">0</strong></div>
+        <div class="item">Temps de jeu: <strong id="gameOverTime">00:00</strong></div>
+        <div class="item">Exploration: <strong id="gameOverExplore">0%</strong> <span class="small" id="gameOverExploreNote"></span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <button id="gameOverRestart">Recommencer l’ACT</button>
+        <button id="gameOverContinue">Reprendre au dernier hub</button>
+        <button id="gameOverMenu">Menu principal</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="spell-wheel">
+    <div class="wheel">
+      <div class="slot top" data-slot="0"></div>
+      <div class="slot left" data-slot="1"></div>
+      <div class="slot right" data-slot="2"></div>
+      <div class="center">Mana 1/3</div>
+    </div>
+  </div>
+  <div id="debug"></div>
+
+  <div id="mobile">
+    <div id="joy"><div id="joyDot"></div></div>
+    <div id="mobBtns">
+      <div class="mobBtn" data-act="attack">ATK</div>
+      <div class="mobBtn" data-act="interact">E</div>
+      <div class="mobBtn" data-act="inventory">INV</div>
+      <div class="mobBtn" data-act="pause">||</div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const mini = document.getElementById('minimap');
+  const mctx = mini.getContext('2d');
+
+  const STORAGE_KEY = 'veyl_save_v3';
+  const SETTINGS_KEY = 'veyl_settings_v3';
+
+  const W = 960;
+  const H = 540;
+  const TILE = 16;
+  const MAP = 64;
+  const WALL_THICKNESS = 3;
+  const DROP_PICKUP_RANGE = 120;
+  const NPC_RANGE = 130;
+  const ORB_RANGE = 120;
+  const GATE_RANGE = 120;
+  const ALTAR_RANGE = 120;
+  const REST_RANGE = 120;
+  const PLAYER_RADIUS = 6;
+
+  const settings = {
+    shake: true,
+    lowParticles: false,
+    mute: false,
+    textSize: 1,
+    volume: 0.6
+  };
+
+  const acts = [
+    { name: 'Acte I', biome: 'Marais Cendrés' },
+    { name: 'Acte II', biome: 'Bois du Voile Noir' },
+    { name: 'Acte III', biome: 'Ruines de Caldris' },
+    { name: 'Acte IV', biome: 'Cratère des Hymnes' },
+    { name: 'Acte V', biome: 'Citadelle Astral-Morne' }
+  ];
+  const zones = Array.from({ length: 25 }, (_, idx) => {
+    const act = Math.floor(idx / 5);
+    const zone = idx % 5;
+    return {
+      id: idx,
+      act,
+      zone,
+      name: `${acts[act].biome} — Zone ${zone + 1}`,
+      fog: 0.35 + zone * 0.05 + act * 0.04
+    };
+  });
+
+  const classes = {
+    blade: {
+      name: 'Lame du Serment',
+      hp: 120,
+      stam: 120,
+      mana: 40,
+      atk: 12,
+      def: 6,
+      crit: 0.05,
+      speed: 120,
+      skill: 'Frappe du Serment',
+      attackType: 'slashwave',
+      projectileSpeed: 200,
+      projectileColor: '#93c5fd',
+      projectileSize: 5,
+      weapon: 'sword'
+    },
+    arcanist: {
+      name: 'Arcaniste',
+      hp: 90,
+      stam: 80,
+      mana: 140,
+      atk: 10,
+      def: 3,
+      crit: 0.08,
+      speed: 110,
+      skill: 'Lance-Voile',
+      attackType: 'orb',
+      projectileSpeed: 230,
+      projectileColor: '#a855f7',
+      projectileSize: 4,
+      weapon: 'staff'
+    },
+    hunter: {
+      name: 'Traqueur',
+      hp: 100,
+      stam: 110,
+      mana: 70,
+      atk: 11,
+      def: 4,
+      crit: 0.12,
+      speed: 130,
+      skill: 'Traque Cendrée',
+      attackType: 'arrow',
+      projectileSpeed: 280,
+      projectileColor: '#f59e0b',
+      projectileSize: 3,
+      weapon: 'bow'
+    }
+  };
+
+  const talentTrees = {
+    blade: [
+      'Lame scellée (+5% dégâts)', 'Rage contenue (+10 stamina)', 'Frappe lourde (+5% crit)',
+      'Serment ancien (+10 PV)', 'Élan implacable (+1 vitesse)', 'Duel de l\'ombre (+5% dégâts boss)',
+      'Riposte des cendres (+5 défense)', 'Coup d\'abîme (+1 dash)', 'Rappel du fer (+10 PV)',
+      'Frappe du serment II (skill améliorée)'
+    ],
+    arcanist: [
+      'Voile fin (+10 mana)', 'Éclats froids (+5% dégâts mag.)', 'Rune vive (+5% crit)',
+      'Clarté noire (+10 mana)', 'Marée astrale (+10 mana)', 'Orbe errant (+1 projectile)',
+      'Décharge (+5% dégâts élite)', 'Spirale du pacte (+1 dash)', 'Voile apaisé (+10 PV)',
+      'Lance-Voile II (skill améliorée)'
+    ],
+    hunter: [
+      'Pisteur (+5% crit)', 'Corde rapide (+1 vitesse)', 'Tir fendu (+5% dégâts)',
+      'Foulée noire (+10 stamina)', 'Précision (crit +5%)', 'Fleur de cendres (+1 projectile)',
+      'Étreinte brumeuse (+5% dégâts boss)', 'Pas du voleur (+1 dash)', 'Souffle vif (+10 PV)',
+      'Traque Cendrée II (skill améliorée)'
+    ]
+  };
+
+  const uniqueItems = [
+    { id: 'u1', name: 'Épée de la Mère-Noyée', slot: 'weapon', desc: 'La lame suinte une eau qui ne reflète rien.' },
+    { id: 'u2', name: 'Corne du Cerf Sans Visage', slot: 'amulet', desc: 'Une prière gravée retourne vers l\'auteur.' },
+    { id: 'u3', name: 'Codex de Caldris', slot: 'ring', desc: 'Chaque page efface un souvenir pour en sauver un autre.' },
+    { id: 'u4', name: 'Chœur Fêlé', slot: 'weapon', desc: 'La vibration blesse l\'âme avant la chair.' },
+    { id: 'u5', name: 'Couronne du Serment Fendu', slot: 'helm', desc: 'Le poids d\'un choix impossible.' },
+    { id: 'u6', name: 'Manteau d\'Elyne', slot: 'armor', desc: 'Les fils gardent la chaleur des vœux.' },
+    { id: 'u7', name: 'Gants du Porte-Cendre', slot: 'gloves', desc: 'Le feu y survit sans brûler.' },
+    { id: 'u8', name: 'Sceau du Sanctuaire', slot: 'amulet', desc: 'Un serment scellé par la brume.' },
+    { id: 'u9', name: 'Bottes du Marqué', slot: 'boots', desc: 'Chaque pas vole un fragment de brume.' },
+    { id: 'u10', name: 'Lanterne d\'Azar', slot: 'ring', desc: 'La flamme éclaire les mensonges.' },
+    { id: 'u11', name: 'Arc du Voile Noir', slot: 'weapon', desc: 'Les flèches suivent la peur.' },
+    { id: 'u12', name: 'Armure d\'Astral-Morne', slot: 'armor', desc: 'Forgée pour un roi qui n\'a jamais régné.' }
+  ];
+
+  const quests = [
+    { id: 'q1', title: 'Serment des Cendres', type: 'main', zone: 0, desc: 'Quitter le sanctuaire en ruine.' },
+    { id: 'q2', title: 'Noyaux de Brume', type: 'main', zone: 0, desc: 'Détruire 3 noyaux dans les Marais.' },
+    { id: 'q3', title: 'La Mère-Noyée', type: 'main', zone: 0, desc: 'Vaincre le boss des Marais.' },
+    { id: 'q4', title: 'Le Voile Noir', type: 'main', zone: 1, desc: 'Trouver Elyne, l\'Éclat Brisé.' },
+    { id: 'q5', title: 'Cerf Sans Visage', type: 'main', zone: 1, desc: 'Vaincre le Cerf.' },
+    { id: 'q6', title: 'Sceaux de Caldris', type: 'main', zone: 2, desc: 'Récupérer 3 sceaux.' },
+    { id: 'q7', title: 'Archiviste Creux', type: 'main', zone: 2, desc: 'Vaincre l\'Archiviste.' },
+    { id: 'q8', title: 'Hymnes brisés', type: 'main', zone: 3, desc: 'Apaiser 3 autels du Cratère.' },
+    { id: 'q9', title: 'Chœur des Fêlés', type: 'main', zone: 3, desc: 'Vaincre le Chœur.' },
+    { id: 'q10', title: 'Roi du Serment Fendu', type: 'main', zone: 4, desc: 'Confronter la Citadelle.' },
+    { id: 's1', title: 'Souvenir fendu', type: 'side', zone: 0, desc: 'Récupérer une bague perdue.' },
+    { id: 's2', title: 'Marchand de cendres', type: 'side', zone: 0, desc: 'Apporter 5 matériaux au marchand.' },
+    { id: 's3', title: 'Chants étouffés', type: 'side', zone: 1, desc: 'Libérer un enfant du voile.' },
+    { id: 's4', title: 'La dette d\'Elyne', type: 'side', zone: 1, desc: 'Choisir d\'aider Elyne.' },
+    { id: 's5', title: 'Cendres du Porteur', type: 'side', zone: 2, desc: 'Trouver Kael.' },
+    { id: 's6', title: 'Cartes brisées', type: 'side', zone: 2, desc: 'Assembler une carte antique.' },
+    { id: 's7', title: 'Litanie du Cratère', type: 'side', zone: 3, desc: 'Sauver un chœur errant.' },
+    { id: 's8', title: 'La voix de pierre', type: 'side', zone: 3, desc: 'Écouter l\'autel silencieux.' },
+    { id: 's9', title: 'Serment des Deux', type: 'side', zone: 4, desc: 'Unir Elyne et Kael.' },
+    { id: 's10', title: 'Le prix du pouvoir', type: 'side', zone: 4, desc: 'Refuser une offrande.' }
+  ];
+
+  const lore = [
+    'La Brume-Couronne naquit d\'un serment sans témoin.',
+    'Les Marqués peuvent porter la corruption sans se briser.',
+    'Le Sanctuaire d\'Aran se dresse au bord de l\'oubli.',
+    'Les morts reviennent creux, privés de mémoire.',
+    'Les Hymnes du Cratère apaisaient jadis les étoiles.',
+    'L\'Ordre de Caldris jurait de garder la vérité.',
+    'Elyne a perdu son éclat dans le Bois Noir.',
+    'Kael est né d\'une prière qui n\'a jamais répondu.',
+    'La Mère-Noyée nourrit la brume avec des promesses.',
+    'Le Cerf Sans Visage garde les chemins de retour.',
+    'L\'Archiviste Creux récite des noms effacés.',
+    'Le Chœur des Fêlés chante pour refermer le ciel.',
+    'Le Roi du Serment Fendu scella la couronne sur lui-même.',
+    'Les anneaux d\'Azar capturent les mensonges.',
+    'Les autels de pierre parlent aux Marqués.',
+    'Les ruines de Caldris sont des pages brisées.',
+    'Chaque noyau détruit réduit la corruption du monde.',
+    'La brume murmure des destinées alternatives.',
+    'Les druides du Voile Noir n\'ont plus de voix.',
+    'La Citadelle Astral-Morne flotte au-dessus d\'une mer vide.',
+    'Les compagnons partagent le fardeau du serment.',
+    'La Couronne promet une paix impossible.',
+    'La Purification exige un sacrifice.',
+    'Le pouvoir corrompt même les Marqués.',
+    'Les pierres du Cratère vibrent aux pleurs du ciel.',
+    'La lueur des sanctuaires repousse les creux.',
+    'Les armes uniques sont des fragments de mythes.',
+    'Les seigneurs de zone sont nés du pacte originel.',
+    'Une étoile se reflète dans chaque lac des Marais.',
+    'Le dernier serment est toujours personnel.'
+  ];
+
+  const npcs = [
+    { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
+    { name: 'Mara des Lisières', role: 'Herboriste', zone: 0, dialog: 'La brume ronge mes récoltes. Prends ce remède.' },
+    { name: 'Serek le Tisseur', role: 'Forgeron', zone: 0, dialog: 'Les métaux chantent encore si on sait écouter.' },
+    { name: 'Nys la Muette', role: 'Oracle', zone: 0, dialog: 'Les marais te veulent vivant, pour l\'instant.' },
+    { name: 'Elyne, l\'Éclat Brisé', role: 'Compagnon', zone: 1, dialog: 'Si je te suis, promets-moi de ne pas mentir.' },
+    { name: 'Kael, le Porte-Cendre', role: 'Compagnon', zone: 2, dialog: 'Je marche pour éteindre ce feu, ou m\'y perdre.' },
+    { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
+    { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
+    { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
+    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' },
+    { name: 'Azar', role: 'Marchand', zone: 0, dialog: 'Mon or vaut plus que ta mémoire, Marqué.' },
+    { name: 'Sage Mir', role: 'Oracle', zone: 4, dialog: 'Le Roi attendait un Marqué.' },
+    { name: 'Tess des Marais', role: 'Survivante', zone: 0, dialog: 'Les noyaux poussent comme des dents.' },
+    { name: 'Ardent Sion', role: 'Chasseur', zone: 1, dialog: 'Le cerf rôde. Ne le regarde pas.' },
+    { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
+  ];
+
+  const state = {
+    running: false,
+    paused: false,
+    dead: false,
+    time: 0,
+    runTime: 0,
+    seed: Math.floor(Math.random() * 1e9),
+    zoneCorruption: Array(25).fill(1),
+    clearedZones: 0,
+    player: null,
+    companions: [],
+    enemies: [],
+    projectiles: [],
+    boss: null,
+    interactables: [],
+    zoneFlow: {},
+    drops: [],
+    particles: [],
+    quests: {},
+    loreFound: {},
+    materials: 0,
+    gold: 0,
+    corruptionAbsorbed: 0,
+    npcs: [],
+    bestProgress: 0,
+    spawnTimer: 0,
+    mouse: { x: W / 2, y: H / 2 },
+    stats: { kills: 0, loot: 0 },
+    explored: {},
+    lastCheckpoint: null,
+    lastHubCheckpoint: null,
+    spellWheel: { open: false, options: [] },
+    minimapZoom: 20,
+    debug: false,
+    activeZone: 0,
+    shopType: 'general',
+    lastDamageSource: 'Inconnu'
+  };
+
+  const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
+  let joyActive = false;
+  const joyVec = { x: 0, y: 0 };
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const rand = (seed) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0xffffffff;
+    };
+  };
+
+  const noise = (x, y, seed) => {
+    let h = x * 374761393 + y * 668265263 + seed * 1442695041;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+  };
+
+  const tileAt = (tx, ty, zone) => {
+    if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
+    const gateY = 24;
+    const doorSpan = 1;
+    const inDoorY = Math.abs(ty - gateY) <= doorSpan;
+    // Ice walls are continuous; only doors can open passages between zones.
+    const flow = state.zoneFlow[`zone-${zone}`];
+    const doorLocked = (gateRef) => {
+      if (!inDoorY) return null;
+      if (tx < MAP - WALL_THICKNESS && tx > WALL_THICKNESS - 1) return null;
+      if (flow && gateRef) return gateRef.locked ? 6 : 0;
+      return 6;
+    };
+    const forwardDoor = doorLocked(flow ? flow.gate : null);
+    if (forwardDoor !== null) return forwardDoor;
+    const backDoor = doorLocked(flow ? flow.backGate : null);
+    if (backDoor !== null) return backDoor;
+    if (tx < WALL_THICKNESS || tx >= MAP - WALL_THICKNESS) {
+      return 6; // ice wall (solid)
+    }
+    const n = noise(tx, ty, state.seed + zone * 77);
+    if (n < 0.03) return 2; // water
+    if (n < 0.06) return 3; // rock
+    if (n < 0.09 && zone !== 3) return 4; // tree
+    if (n < 0.11 && zone >= 2) return 5; // ruins
+    return 0; // ground
+  };
+
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6;
+
+  const isSolidAt = (x, y) => {
+    const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
+    const tx = Math.floor((x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(y / TILE);
+    return isSolid(tileAt(tx, ty, zoneIndex));
+  };
+
+  const collidesCircle = (x, y, r) => {
+    const points = [
+      [x - r, y - r],
+      [x + r, y - r],
+      [x - r, y + r],
+      [x + r, y + r]
+    ];
+    return points.some(([px, py]) => isSolidAt(px, py));
+  };
+
+  const getCamera = () => {
+    const camX = clamp(state.player.x - W / 2, 0, MAP * zones.length * TILE - W);
+    const camY = clamp(state.player.y - H / 2, 0, MAP * TILE - H);
+    return { camX, camY };
+  };
+
+  const showToast = (msg) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 1400);
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const markExplored = () => {
+    const zone = currentZone();
+    if (!state.explored[zone]) state.explored[zone] = new Set();
+    const tx = Math.floor((state.player.x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(state.player.y / TILE);
+    state.explored[zone].add(`${tx},${ty}`);
+  };
+
+  const walkableTotal = (zone) => {
+    const key = `zone-${zone}-walkable`;
+    if (!state.explored[key]) {
+      let total = 0;
+      for (let y = 0; y < MAP; y++) {
+        for (let x = 0; x < MAP; x++) {
+          if (!isSolid(tileAt(x, y, zone))) total += 1;
+        }
+      }
+      state.explored[key] = total;
+    }
+    return state.explored[key];
+  };
+
+  const explorationPercent = (zone) => {
+    const seen = state.explored[zone] ? state.explored[zone].size : 0;
+    const total = walkableTotal(zone) || 1;
+    return Math.min(100, Math.round((seen / total) * 100));
+  };
+
+  const updateGameOverStats = () => {
+    const zone = currentZone();
+    const progress = Math.round(((state.clearedZones + 1) / zones.length) * 100);
+    const actIndex = Math.floor(zone / 5);
+    const zoneIndex = zone % 5;
+    document.getElementById('gameOverProgress').textContent = `${progress}%`;
+    document.getElementById('gameOverProgressNote').textContent = `(zones purifiées: ${state.clearedZones + 1}/${zones.length})`;
+    document.getElementById('gameOverZone').textContent = `${acts[actIndex].name} — Zone ${zoneIndex + 1}/5`;
+    document.getElementById('gameOverCause').textContent = `Cause: ${state.lastDamageSource || 'Inconnu'}`;
+    const checkpoint = state.lastHubCheckpoint || state.lastCheckpoint;
+    document.getElementById('gameOverCheckpoint').textContent = checkpoint ? `Dernier checkpoint: Zone ${checkpoint.zone + 1}` : 'Dernier checkpoint: aucun';
+    document.getElementById('gameOverKills').textContent = state.stats.kills;
+    document.getElementById('gameOverLoot').textContent = state.stats.loot;
+    document.getElementById('gameOverTime').textContent = formatTime(state.runTime);
+    document.getElementById('gameOverExplore').textContent = `${explorationPercent(zone)}%`;
+    document.getElementById('gameOverExploreNote').textContent = '(tiles walkable vus / total zone courante)';
+  };
+
+  // NEW: game over flow without page reload.
+  const handleDeath = () => {
+    if (state.dead) return;
+    state.dead = true;
+    updateGameOverStats();
+    openPanel('gameOver', false);
+    state.paused = true;
+  };
+
+  const continueFromCheckpoint = () => {
+    state.dead = false;
+    state.paused = false;
+    const hub = state.lastHubCheckpoint || state.lastCheckpoint;
+    if (hub) {
+      state.player.x = hub.x;
+      state.player.y = hub.y;
+    } else {
+      state.player.x = 30 * TILE;
+      state.player.y = 30 * TILE;
+    }
+    state.player.hp = state.player.hpMax;
+    hideAll();
+  };
+
+  const resetRun = () => {
+    Object.assign(state, {
+      running: false,
+      paused: false,
+      dead: false,
+      time: 0,
+      runTime: 0,
+      seed: Math.floor(Math.random() * 1e9),
+      zoneCorruption: Array(25).fill(1),
+      clearedZones: 0,
+      player: null,
+      companions: [],
+      enemies: [],
+      projectiles: [],
+      boss: null,
+      interactables: [],
+      zoneFlow: {},
+      drops: [],
+      particles: [],
+      quests: {},
+      loreFound: {},
+      materials: 0,
+      gold: 0,
+      corruptionAbsorbed: 0,
+      npcs: [],
+      bestProgress: 0,
+      spawnTimer: 0,
+      mouse: { x: W / 2, y: H / 2 },
+      stats: { kills: 0, loot: 0 },
+      explored: {},
+      lastCheckpoint: null,
+      lastHubCheckpoint: null
+    });
+    buildNpcInstances();
+    hideAll();
+    document.getElementById('menu').style.display = 'flex';
+  };
+
+  const audio = {
+    ctx: null,
+    enabled: false,
+    init() {
+      if (this.ctx) return;
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.enabled = true;
+      } catch (err) {
+        this.enabled = false;
+      }
+    },
+    tone(freq, dur, type, vol) {
+      if (!this.enabled || settings.mute) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(vol * settings.volume, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(t + dur);
+    },
+    hit() { this.tone(180, 0.06, 'sawtooth', 0.08); },
+    loot() { this.tone(620, 0.12, 'sine', 0.1); },
+    menu() { this.tone(520, 0.08, 'triangle', 0.06); },
+    ambient(zone) {
+      if (!this.enabled || settings.mute) return;
+      this.stopMusic();
+      const tempo = 72;
+      const beat = 60 / tempo;
+      const base = 110 + zone * 3;
+      const prog = [0, 8, 3, 10];
+      const melody = [0, 3, 5, 7, 5, 3, 0, -2];
+      let step = 0;
+      this._musicTimer = setInterval(() => {
+        if (settings.mute || !this.enabled) return;
+        const chord = prog[Math.floor(step / 8) % prog.length];
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(base * Math.pow(2, chord / 12), t);
+        gain.gain.setValueAtTime(0.02 * settings.volume, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + beat * 2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(t + beat * 2);
+        const m = melody[step % melody.length];
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(base * Math.pow(2, (chord + m) / 12), t);
+        gain2.gain.setValueAtTime(0.012 * settings.volume, t);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, t + beat);
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.start();
+        osc2.stop(t + beat);
+        step += 1;
+      }, beat * 1000);
+    },
+    stopMusic() {
+      if (this._musicTimer) clearInterval(this._musicTimer);
+      this._musicTimer = null;
+    }
+  };
+
+  const createPlayer = (clsKey) => {
+    const base = classes[clsKey];
+    return {
+      classKey: clsKey,
+      name: base.name,
+      x: 30 * TILE,
+      y: 30 * TILE,
+      vx: 0,
+      vy: 0,
+      hp: base.hp,
+      hpMax: base.hp,
+      stam: base.stam,
+      stamMax: base.stam,
+      mana: base.mana,
+      manaMax: base.mana,
+      atk: base.atk,
+      def: base.def,
+      crit: base.crit,
+      ranged: true,
+      attackType: base.attackType,
+      projectileSpeed: base.projectileSpeed,
+      projectileColor: base.projectileColor,
+      projectileSize: base.projectileSize,
+      weapon: base.weapon,
+      size: 4,
+      speed: base.speed,
+      level: 1,
+      xp: 0,
+      xpNext: 60,
+      statPoints: 3,
+      stats: { str: 5, agi: 5, spi: 5, vit: 5 },
+      inv: [],
+      equip: { weapon: null, armor: null, helm: null, boots: null, amulet: null, ring: null, gloves: null },
+      dashCooldown: 0,
+      skillCooldown: 0,
+      iFrames: 0,
+      loyalty: { elyne: 0, kael: 0 }
+    };
+  };
+
+  const spawnCompanion = (id) => {
+    const comp = id === 'elyne'
+      ? { id: 'elyne', name: 'Elyne', role: 'support', x: state.player.x - 20, y: state.player.y - 20, hp: 60, hpMax: 60, cooldown: 0, loyalty: 0 }
+      : { id: 'kael', name: 'Kael', role: 'dps', x: state.player.x - 30, y: state.player.y + 20, hp: 80, hpMax: 80, cooldown: 0, loyalty: 0 };
+    state.companions.push(comp);
+  };
+
+  const buildNpcInstances = () => {
+    state.npcs = npcs.map((npc, idx) => {
+      const zoneOffset = npc.zone * MAP * TILE;
+      const x = zoneOffset + (10 + (idx % 10) * 4) * TILE;
+      const y = (12 + (idx % 6) * 3) * TILE;
+      return { ...npc, x, y, recruited: false };
+    });
+    acts.forEach((_, actIndex) => {
+      const hubZone = actIndex * 5 + 2;
+      const hubOffset = hubZone * MAP * TILE;
+      const vendors = [
+        { name: 'Mirel', role: 'Marchand HP', dialog: 'Des fioles pour tenir debout.' },
+        { name: 'Solen', role: 'Marchand Mana', dialog: 'La brume se vend au poids.' },
+        { name: 'Garrin', role: 'Marchand Équipement', dialog: 'Chaque lame a son serment.' },
+        { name: 'Atelier', role: 'Forge', dialog: 'Améliore ton serment.' },
+        { name: 'Revente', role: 'Revente', dialog: 'Je reprends vos artefacts.' }
+      ];
+      vendors.forEach((v, idx) => {
+        state.npcs.push({
+          name: v.name,
+          role: v.role,
+          dialog: v.dialog,
+          zone: hubZone,
+          x: hubOffset + (18 + idx * 4) * TILE,
+          y: 26 * TILE,
+          recruited: false
+        });
+      });
+    });
+  };
+
+  const initZoneFlow = (zone) => {
+    const key = `zone-${zone}`;
+    if (state.zoneFlow[key]) return;
+    const isHub = zone % 5 === 2;
+    const orbs = [];
+    if (!isHub) {
+      for (let i = 0; i < 3; i++) {
+        orbs.push({
+          id: `orb-${zone}-${i}`,
+          type: 'orb',
+          x: zone * MAP * TILE + (12 + i * 6) * TILE,
+          y: (14 + i * 4) * TILE,
+          active: true
+        });
+      }
+    }
+    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
+    const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
+    let backGate = null;
+    if (zone > 0) {
+      const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
+      const unlocked = prevFlow ? !prevFlow.gate.locked : false;
+      backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + (WALL_THICKNESS - 1) * TILE, y: 24 * TILE, locked: !unlocked };
+    }
+    state.zoneFlow[key] = {
+      orbsDestroyed: 0,
+      altar,
+      gate,
+      backGate,
+      keyDropped: false,
+      bossState: { spawned: false, alive: false, defeated: false },
+      isHub
+    };
+    state.interactables.push(...orbs, altar, gate);
+    if (backGate) state.interactables.push(backGate);
+    if (isHub) {
+      state.interactables.push({ id: `rest-${zone}`, type: 'rest', x: zone * MAP * TILE + 18 * TILE, y: 24 * TILE });
+    }
+  };
+
+  const syncBackGate = (zone) => {
+    const flow = state.zoneFlow[`zone-${zone}`];
+    if (!flow || !flow.backGate) return;
+    const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
+    if (prevFlow && !prevFlow.gate.locked) flow.backGate.locked = false;
+  };
+
+  const rollItem = (zoneIndex) => {
+    const rarityRoll = Math.random();
+    let rarity = 'common';
+    if (rarityRoll > 0.95) rarity = 'legendary';
+    else if (rarityRoll > 0.85) rarity = 'epic';
+    else if (rarityRoll > 0.65) rarity = 'rare';
+    const slots = ['weapon', 'armor', 'helm', 'boots', 'amulet', 'ring'];
+    const slot = slots[Math.floor(Math.random() * slots.length)];
+    const affixes = ['+crit', '+stamina', '+resist brume', '+lifesteal', '+atk', '+def', '+mana regen'];
+    const affix = affixes[Math.floor(Math.random() * affixes.length)];
+    return {
+      id: `it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: `${slot} ${rarity}`,
+      slot,
+      rarity,
+      affix,
+      power: zoneIndex + 1
+    };
+  };
+
+  const addItem = (item) => {
+    state.stats.loot += 1;
+    if (item.type === 'potion') {
+      state.player.inv.push({ type: 'potion', name: 'Potion' });
+      showToast('Potion +1');
+      audio.loot();
+      return;
+    }
+    if (item.type === 'mana_potion') {
+      state.player.inv.push({ type: 'mana_potion', name: 'Potion de Mana' });
+      showToast('Potion de Mana +1');
+      audio.loot();
+      return;
+    }
+    state.player.inv.push(item);
+    audio.loot();
+    showToast(`Loot: ${item.name}`);
+  };
+
+  const rarityColor = (rarity) => {
+    if (rarity === 'rare') return '#4d94ff';
+    if (rarity === 'epic') return '#a335ee';
+    if (rarity === 'legendary') return '#ff8000';
+    return '#e5e7eb';
+  };
+
+  const spawnDrop = (item, x, y) => {
+    state.drops.push({
+      x, y,
+      item,
+      bob: Math.random() * Math.PI * 2,
+      color: rarityColor(item.rarity)
+    });
+  };
+
+  const ENEMY_TYPES = [
+    { id: 'dash', name: 'Vermine', speed: 70, hp: 0.7, atk: 1, behavior: 'dash', resist: { ice: 1.1, fire: 0.9, poison: 1.2, lightning: 1.0, arcane: 1.0 } },
+    { id: 'sniper', name: 'Guetteur', speed: 45, hp: 0.8, atk: 1, behavior: 'ranged', resist: { ice: 0.9, fire: 1.1, poison: 1.0, lightning: 1.2, arcane: 1.0 } },
+    { id: 'tank', name: 'Chevalier Creux', speed: 30, hp: 1.7, atk: 1.4, behavior: 'tank', resist: { ice: 0.8, fire: 1.2, poison: 0.9, lightning: 1.0, arcane: 1.1 } },
+    { id: 'caster', name: 'Mage du Voile', speed: 38, hp: 1.0, atk: 1.2, behavior: 'caster', resist: { ice: 1.0, fire: 1.1, poison: 0.8, lightning: 1.2, arcane: 0.9 } },
+    { id: 'flying', name: 'Bête Brumeuse', speed: 62, hp: 1.0, atk: 1.1, behavior: 'flying', resist: { ice: 1.2, fire: 0.9, poison: 1.0, lightning: 1.1, arcane: 1.0 } },
+    { id: 'swarm', name: 'Nuée', speed: 75, hp: 0.5, atk: 0.7, behavior: 'swarm', resist: { ice: 0.9, fire: 1.1, poison: 1.3, lightning: 0.9, arcane: 1.0 } },
+    { id: 'brute', name: 'Briseur', speed: 40, hp: 1.3, atk: 1.6, behavior: 'brute', resist: { ice: 0.9, fire: 1.0, poison: 0.8, lightning: 1.2, arcane: 1.1 } }
+  ];
+
+  const getResistMultiplier = (enemy, element) => {
+    if (!element || !enemy.resist) return 1;
+    return enemy.resist[element] ?? 1;
+  };
+
+  const applySpellDamage = (enemy, amount, element) => {
+    const mult = getResistMultiplier(enemy, element);
+    enemy.hp -= Math.max(1, amount * mult);
+  };
+
+  const createEnemy = (zoneIndex, x, y, forcedType = null) => {
+    const type = forcedType || ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    const hpBase = 50 + zoneIndex * 25;
+    return {
+      type: type.name,
+      kind: type.id,
+      x, y,
+      vx: 0,
+      vy: 0,
+      hp: Math.floor(hpBase * type.hp),
+      hpMax: Math.floor(hpBase * type.hp),
+      atk: Math.floor((6 + zoneIndex * 3) * type.atk),
+      def: 1 + zoneIndex,
+      resist: type.resist,
+      state: 'patrol',
+      cooldown: 0,
+      dashCooldown: 0,
+      rare: Math.random() > 0.9 ? 'elite' : 'common'
+    };
+  };
+
+  const currentZone = () => clamp(Math.floor(state.player.x / (MAP * TILE)), 0, zones.length - 1);
+
+  const spawnEnemies = () => {
+    if (state.spawnTimer > 0) return;
+    if (state.enemies.length >= 12) return;
+    const zoneIndex = currentZone();
+    if (state.zoneFlow[`zone-${zoneIndex}`]?.isHub) return;
+    for (let i = 0; i < 1; i++) {
+      const x = state.player.x + (Math.random() * 500 - 250);
+      const y = state.player.y + (Math.random() * 400 - 200);
+      if (!isSolidAt(x, y) && Math.hypot(x - state.player.x, y - state.player.y) > 120) {
+        const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+        if (type.id === 'swarm') {
+          for (let s = 0; s < 3; s++) {
+            state.enemies.push(createEnemy(zoneIndex, x + s * 8, y + s * 6, type));
+          }
+        } else {
+          state.enemies.push(createEnemy(zoneIndex, x, y, type));
+        }
+        state.spawnTimer = 1.2;
+      }
+    }
+  };
+
+  const updateBars = () => {
+    document.getElementById('hpBar').style.width = `${(state.player.hp / state.player.hpMax) * 100}%`;
+    document.getElementById('staBar').style.width = `${(state.player.stam / state.player.stamMax) * 100}%`;
+    document.getElementById('manaBar').style.width = `${(state.player.mana / state.player.manaMax) * 100}%`;
+    if (state.spellWheel.open) updateSpellWheelCenter();
+    document.getElementById('lvlText').textContent = state.player.level;
+    document.getElementById('goldText').textContent = state.gold;
+    const zoneIndex = currentZone();
+    const zone = zones[zoneIndex];
+    const actIndex = Math.floor(zoneIndex / 5);
+    const zoneLocal = zoneIndex % 5;
+    document.getElementById('zoneText').textContent = `${acts[actIndex].name} — Zone ${zoneLocal + 1}/5`;
+    const flow = state.zoneFlow[`zone-${zone.id}`];
+    const obj = flow ? (flow.isHub ? 'Repos & Commerce' : flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
+    document.getElementById('questText').textContent = `Objectif: ${obj}`;
+  };
+
+  const updateMini = () => {
+    const zoneIndex = currentZone();
+    const playerLocalX = state.player.x - zoneIndex * MAP * TILE;
+    const playerLocalY = state.player.y;
+    const viewTiles = state.minimapZoom;
+    const scale = mini.width / (viewTiles * TILE);
+    mctx.clearRect(0, 0, mini.width, mini.height);
+    mctx.fillStyle = '#0b0f16';
+    mctx.fillRect(0, 0, mini.width, mini.height);
+    const startX = Math.floor(playerLocalX / TILE) - Math.floor(viewTiles / 2);
+    const startY = Math.floor(playerLocalY / TILE) - Math.floor(viewTiles / 2);
+    const isExplored = (x, y) => state.explored[zoneIndex]?.has(`${x},${y}`);
+    const isNearPlayer = (x, y) => {
+      const dx = x * TILE + TILE / 2 - playerLocalX;
+      const dy = y * TILE + TILE / 2 - playerLocalY;
+      return dx * dx + dy * dy < (TILE * 3) * (TILE * 3);
+    };
+    for (let y = 0; y < viewTiles; y++) {
+      for (let x = 0; x < viewTiles; x++) {
+        const tx = startX + x;
+        const ty = startY + y;
+        const t = tileAt(tx, ty, zoneIndex);
+        const explored = isExplored(tx, ty);
+        if (!explored) {
+          mctx.fillStyle = '#0b0f16';
+          mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
+          continue;
+        }
+        if (t === 6) mctx.fillStyle = '#7dd3fc';
+        else if (t === 2) mctx.fillStyle = '#1f2937';
+        else if (t === 3) mctx.fillStyle = '#374151';
+        else if (t === 4) mctx.fillStyle = '#1f2d1f';
+        else if (t === 5) mctx.fillStyle = '#2f2f38';
+        else mctx.fillStyle = '#111827';
+        mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
+      }
+    }
+    const drawDot = (x, y, color, size = 2) => {
+      const dx = (x - zoneIndex * MAP * TILE) - playerLocalX + (viewTiles * TILE) / 2;
+      const dy = y - playerLocalY + (viewTiles * TILE) / 2;
+      const tx = Math.floor((x - zoneIndex * MAP * TILE) / TILE);
+      const ty = Math.floor(y / TILE);
+      if (!isExplored(tx, ty) && !isNearPlayer(tx, ty)) return;
+      mctx.fillStyle = color;
+      mctx.fillRect(dx * scale - size / 2, dy * scale - size / 2, size, size);
+    };
+    state.enemies.forEach(e => drawDot(e.x, e.y, '#ef4444', 2.4));
+    state.drops.forEach(d => drawDot(d.x, d.y, '#facc15', 2.4));
+    state.interactables.forEach(it => {
+      if (Math.floor(it.x / (MAP * TILE)) !== zoneIndex) return;
+      if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
+      else if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 2.6);
+      else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
+    });
+    state.companions.forEach(c => drawDot(c.x, c.y, '#22c55e', 2.2));
+    state.npcs.forEach(npc => {
+      if (Math.floor(npc.x / (MAP * TILE)) === zoneIndex) drawDot(npc.x, npc.y, '#a3e635', 2.2);
+    });
+    if (state.boss) drawDot(state.boss.x, state.boss.y, '#a855f7', 3);
+    drawDot(state.player.x, state.player.y, '#22c55e', 3);
+  };
+
+  const getInteractableTargets = () => {
+    const targets = [];
+    state.interactables.forEach(it => {
+      if (it.type === 'orb' && !it.active) return;
+      if (it.type === 'altar' && !it.active) return;
+      if (it.type === 'gate' || it.type === 'rest' || it.type === 'altar' || it.type === 'orb') {
+        targets.push({ x: it.x, y: it.y, type: it.type });
+      }
+    });
+    state.drops.forEach(d => targets.push({ x: d.x, y: d.y, type: 'drop' }));
+    state.npcs.forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc', role: npc.role }));
+    return targets.filter(t => {
+      const dx = t.x - state.player.x;
+      const dy = t.y - state.player.y;
+      const range = t.type === 'drop' ? DROP_PICKUP_RANGE
+        : t.type === 'gate' ? GATE_RANGE
+          : t.type === 'orb' ? ORB_RANGE
+            : t.type === 'altar' ? ALTAR_RANGE
+              : t.type === 'rest' ? REST_RANGE
+                : NPC_RANGE;
+      return dx * dx + dy * dy < range * range;
+    });
+  };
+
+  const updatePlayer = (dt) => {
+    const p = state.player;
+    let ax = 0; let ay = 0;
+    if (keys.left) ax -= 1;
+    if (keys.right) ax += 1;
+    if (keys.up) ay -= 1;
+    if (keys.down) ay += 1;
+    if (joyActive) { ax += joyVec.x; ay += joyVec.y; }
+    const len = Math.hypot(ax, ay) || 1;
+    ax /= len; ay /= len;
+    p.vx = ax * p.speed * dt;
+    p.vy = ay * p.speed * dt;
+    if (keys.dash && p.stam > 20 && p.dashCooldown <= 0) {
+      p.vx *= 3; p.vy *= 3; p.stam -= 20; p.dashCooldown = 1.2; p.iFrames = 0.2;
+      for (let i = 0; i < 8; i++) {
+        state.particles.push({
+          x: p.x - p.vx * 0.1,
+          y: p.y - p.vy * 0.1,
+          vx: -p.vx * 0.2 + (Math.random() - 0.5) * 30,
+          vy: -p.vy * 0.2 + (Math.random() - 0.5) * 30,
+          life: 0.5,
+          color: '#e5e7eb'
+        });
+      }
+    }
+    p.x += p.vx; p.y += p.vy;
+    p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
+    p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
+    if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) {
+      p.x -= p.vx;
+      if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.x += p.vx;
+      p.y -= p.vy;
+      if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.y += p.vy;
+    }
+    p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
+    p.attackCooldown = Math.max(0, (p.attackCooldown || 0) - dt);
+    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    p.skillCooldown = Math.max(0, p.skillCooldown - dt);
+    p.iFrames = Math.max(0, p.iFrames - dt);
+    markExplored();
+  };
+
+  const updateEnemies = (dt) => {
+    const p = state.player;
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      if (e.poison > 0) {
+        e.poison -= dt;
+        applySpellDamage(e, dt * 3, e.poisonElement || 'poison');
+      }
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      const dist2 = dx * dx + dy * dy;
+      const slow = e.slow > 0 ? 0.5 : 1;
+      if (dist2 < 220 * 220) {
+        const dist = Math.sqrt(dist2) || 1;
+        const speed = (e.kind === 'tank' ? 25
+          : e.kind === 'sniper' ? 35
+            : e.kind === 'brute' ? 40
+              : e.kind === 'swarm' ? 55
+                : 45) * slow;
+        e.vx = (dx / dist) * speed * dt;
+        e.vy = (dy / dist) * speed * dt;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (e.kind === 'flying' || !isSolidAt(nx, e.y)) e.x = nx;
+        if (e.kind === 'flying' || !isSolidAt(e.x, ny)) e.y = ny;
+        if (e.kind === 'dash' && e.dashCooldown <= 0 && dist2 < 140 * 140) {
+          e.x += (dx / dist) * 30;
+          e.y += (dy / dist) * 30;
+          e.dashCooldown = 2.0;
+        }
+        if ((e.kind === 'sniper' || e.kind === 'caster') && e.cooldown <= 0 && dist2 < 200 * 200) {
+          const angle = Math.atan2(dy, dx);
+          state.projectiles.push({
+            x: e.x,
+            y: e.y,
+            vx: Math.cos(angle) * 160,
+            vy: Math.sin(angle) * 160,
+            life: 1.6,
+            dmg: Math.max(3, e.atk - 2),
+            size: 3,
+            color: e.kind === 'caster' ? '#a855f7' : '#ef4444',
+            shape: 'orb',
+            source: 'enemy'
+          });
+          e.cooldown = e.kind === 'caster' ? 2.0 : 1.2;
+        }
+        if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0 && e.kind !== 'sniper') {
+          const dmg = Math.max(1, e.atk - p.def);
+          state.lastDamageSource = `Ennemi (${e.type})`;
+          p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
+          if (p.hp <= 0) { handleDeath(); }
+        }
+      } else {
+        e.vx = Math.sin(state.time + i) * 10 * dt * slow;
+        e.vy = Math.cos(state.time + i) * 10 * dt * slow;
+        const nx = e.x + e.vx;
+        const ny = e.y + e.vy;
+        if (e.kind === 'flying' || !isSolidAt(nx, e.y)) e.x = nx;
+        if (e.kind === 'flying' || !isSolidAt(e.x, ny)) e.y = ny;
+      }
+      e.slow = Math.max(0, (e.slow || 0) - dt);
+      e.cooldown = Math.max(0, e.cooldown - dt);
+      e.dashCooldown = Math.max(0, e.dashCooldown - dt);
+    }
+  };
+
+  // Fix: melee checks previously only used the player center, so bosses could feel unhittable.
+  const bossHitCheck = (dmg, x, y, radius = 16) => {
+    if (!state.boss) return false;
+    const dx = state.boss.x - x;
+    const dy = state.boss.y - y;
+    if (dx * dx + dy * dy < radius * radius) {
+      state.boss.hp -= dmg;
+      audio.hit();
+      return true;
+    }
+    return false;
+  };
+
+  const updateBoss = (dt) => {
+    if (!state.boss) return;
+    const b = state.boss;
+    const p = state.player;
+    const dx = p.x - b.x;
+    const dy = p.y - b.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = b.x + (dx / dist) * 20 * dt;
+    const ny = b.y + (dy / dist) * 20 * dt;
+    if (!isSolidAt(nx, b.y)) b.x = nx;
+    if (!isSolidAt(b.x, ny)) b.y = ny;
+    if (dist < 22 && p.iFrames <= 0) {
+      state.lastDamageSource = 'Boss';
+      p.hp -= 12; p.iFrames = 0.8;
+      if (p.hp <= 0) handleDeath();
+    }
+    b.phase = b.hp < b.hpMax * 0.66 ? 2 : b.hp < b.hpMax * 0.33 ? 3 : 1;
+    if (b.hp <= 0) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) {
+        flow.keyDropped = true;
+        flow.bossState.alive = false;
+        flow.bossState.defeated = true;
+        state.zoneCorruption[zone] = 0;
+        if (state.clearedZones < zone + 1) {
+          state.clearedZones = zone + 1;
+          state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
+        }
+      }
+      showToast('Clé obtenue.');
+      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
+      state.boss = null;
+    }
+  };
+
+  const updateCompanions = (dt) => {
+    const p = state.player;
+    if (state.dead) return;
+    state.companions.forEach(c => {
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > 36) { c.x += (dx / dist) * 36 * dt; c.y += (dy / dist) * 36 * dt; }
+      c.cooldown = Math.max(0, c.cooldown - dt);
+      c.healCooldown = Math.max(0, (c.healCooldown || 0) - dt);
+      let nearest = null;
+      let nearestDist = 999999;
+      state.enemies.forEach(e => {
+        const ex = e.x - c.x;
+        const ey = e.y - c.y;
+        const d2 = ex * ex + ey * ey;
+        if (d2 < 160 * 160 && d2 < nearestDist) {
+          nearestDist = d2;
+          nearest = e;
+        }
+      });
+      if (nearest && c.cooldown <= 0) {
+        const dmg = c.id === 'elyne' ? 3 : 5;
+        const angle = Math.atan2(nearest.y - c.y, nearest.x - c.x);
+        state.projectiles.push({
+          x: c.x,
+          y: c.y,
+          vx: Math.cos(angle) * 200,
+          vy: Math.sin(angle) * 200,
+          life: 1.0,
+          dmg,
+          size: 3,
+          color: c.id === 'elyne' ? '#38bdf8' : '#f97316',
+          shape: 'orb',
+          source: 'ally'
+        });
+        c.cooldown = c.id === 'elyne' ? 1.3 : 0.9;
+      }
+      if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.healCooldown <= 0) {
+        p.hp = clamp(p.hp + 8, 0, p.hpMax);
+        c.healCooldown = 4;
+      }
+    });
+  };
+
+  const doAttack = () => {
+    if (state.dead) return;
+    const p = state.player;
+    if (p.attackCooldown > 0) return;
+    p.attackCooldown = p.attackType === 'slashwave' ? 0.5 : 0.25;
+    if (p.stam < 10) return;
+    p.stam -= 10;
+    const { camX, camY } = getCamera();
+    const angle = Math.atan2(state.mouse.y + camY - p.y, state.mouse.x + camX - p.x);
+    if (p.attackType === 'slashwave') {
+      const range = 26;
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        if (dx * dx + dy * dy < range * range) {
+          e.hp -= Math.max(1, p.atk - e.def);
+          audio.hit();
+          if (e.hp <= 0) {
+            state.enemies.splice(i, 1);
+            state.stats.kills += 1;
+            state.player.xp += 10 + currentZone() * 5;
+            state.gold += 3;
+            if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
+            if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
+          }
+        }
+      }
+      bossHitCheck(p.atk, p.x, p.y, range + 4);
+      state.projectiles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(angle) * p.projectileSpeed,
+        vy: Math.sin(angle) * p.projectileSpeed,
+        life: 0.7,
+        dmg: p.atk + 3,
+        size: p.projectileSize + 1,
+        color: p.projectileColor,
+        shape: 'wave'
+      });
+      return;
+    }
+    if (p.attackType === 'orb') {
+      state.projectiles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(angle) * p.projectileSpeed,
+        vy: Math.sin(angle) * p.projectileSpeed,
+        life: 1.1,
+        dmg: p.atk + 4,
+        size: p.projectileSize,
+        color: p.projectileColor,
+        shape: 'orb'
+      });
+      return;
+    }
+    state.projectiles.push({
+      x: p.x,
+      y: p.y,
+      vx: Math.cos(angle) * p.projectileSpeed,
+      vy: Math.sin(angle) * p.projectileSpeed,
+      life: 1.0,
+      dmg: p.atk + 5,
+      size: p.projectileSize,
+      color: p.projectileColor,
+      shape: 'arrow'
+    });
+  };
+
+  const spells = [
+    { id: 'bolt', name: 'Bolt', effect: 'bolt' },
+    { id: 'nova', name: 'Nova', effect: 'nova' },
+    { id: 'ice', name: 'Ice Spike', effect: 'ice' },
+    { id: 'fire', name: 'Fireball', effect: 'fire' },
+    { id: 'chain', name: 'Chain Lightning', effect: 'chain' },
+    { id: 'poison', name: 'Poison Cloud', effect: 'poison' },
+    { id: 'shield', name: 'Shield', effect: 'shield' },
+    { id: 'blink', name: 'Blink', effect: 'blink' },
+    { id: 'gravity', name: 'Gravity Pull', effect: 'gravity' },
+    { id: 'summon', name: 'Summon Orb', effect: 'summon' }
+  ];
+
+  const openSpellWheel = () => {
+    if (state.dead || state.spellWheel.open) return;
+    const unlocked = spells;
+    const picks = [];
+    while (picks.length < 3) {
+      const pick = unlocked[Math.floor(Math.random() * unlocked.length)];
+      if (!picks.find(p => p.id === pick.id)) picks.push(pick);
+    }
+    state.spellWheel = { open: true, options: picks };
+    const wheel = document.getElementById('spell-wheel');
+    wheel.style.display = 'flex';
+    wheel.querySelectorAll('.slot').forEach((slot, idx) => {
+      slot.textContent = picks[idx].name;
+    });
+    updateSpellWheelCenter();
+    state.paused = true;
+  };
+
+  const closeSpellWheel = () => {
+    state.spellWheel.open = false;
+    document.getElementById('spell-wheel').style.display = 'none';
+    state.paused = false;
+  };
+
+  const updateSpellWheelCenter = () => {
+    const charges = Math.floor(state.player.mana / (state.player.manaMax / 3));
+    const center = document.querySelector('#spell-wheel .center');
+    if (center) center.textContent = `Mana ${charges}/3`;
+  };
+
+  const castSpell = (spell) => {
+    if (state.dead) return;
+    const p = state.player;
+    const cost = p.manaMax / 3;
+    if (p.mana < cost) {
+      showToast('Mana insuffisant');
+      audio.tone(120, 0.1, 'sine', 0.05);
+      return;
+    }
+    p.mana -= cost;
+    updateSpellWheelCenter();
+    showToast(`Sort: ${spell.name}`);
+    const { camX, camY } = getCamera();
+    const angle = Math.atan2(state.mouse.y + camY - state.player.y, state.mouse.x + camX - state.player.x);
+    if (spell.effect === 'bolt') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb', element: 'lightning' });
+    } else if (spell.effect === 'nova') {
+      state.enemies.forEach(e => {
+        const dx = e.x - p.x; const dy = e.y - p.y;
+        if (dx * dx + dy * dy < 80 * 80) applySpellDamage(e, 12, 'arcane');
+      });
+    } else if (spell.effect === 'ice') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6, element: 'ice' });
+    } else if (spell.effect === 'fire') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire' });
+    } else if (spell.effect === 'chain') {
+      let target = state.enemies[0];
+      if (target) applySpellDamage(target, 14, 'lightning');
+      if (state.enemies[1]) applySpellDamage(state.enemies[1], 10, 'lightning');
+    } else if (spell.effect === 'poison') {
+      state.enemies.forEach(e => { e.poison = 2.5; e.poisonElement = 'poison'; });
+    } else if (spell.effect === 'shield') {
+      p.def += 4; setTimeout(() => { p.def -= 4; }, 3000);
+    } else if (spell.effect === 'blink') {
+      p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
+    } else if (spell.effect === 'gravity') {
+      state.enemies.forEach(e => {
+        e.x += (p.x - e.x) * 0.1;
+        e.y += (p.y - e.y) * 0.1;
+      });
+    } else if (spell.effect === 'summon') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
+    }
+  };
+
+  const updateProjectiles = (dt) => {
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+      const pr = state.projectiles[i];
+      if (pr.orbit) {
+        pr.x = state.player.x + Math.cos(state.time + i) * 40;
+        pr.y = state.player.y + Math.sin(state.time + i) * 40;
+      } else {
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+      }
+      pr.life -= dt;
+      if (!pr.orbit && collidesCircle(pr.x, pr.y, pr.size || 2)) pr.life = 0;
+      if (!settings.lowParticles && Math.random() > 0.4) {
+        state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: pr.color || '#facc15' });
+      }
+      if (bossHitCheck(pr.dmg, pr.x, pr.y)) {
+        pr.life = 0;
+      }
+      if (pr.source === 'enemy') {
+        const dxp = state.player.x - pr.x;
+        const dyp = state.player.y - pr.y;
+        if (dxp * dxp + dyp * dyp < 16 * 16 && state.player.iFrames <= 0) {
+          state.lastDamageSource = 'Projectile ennemi';
+          state.player.hp -= pr.dmg;
+          state.player.iFrames = 0.6;
+          pr.life = 0;
+          if (state.player.hp <= 0) handleDeath();
+        }
+        if (pr.life <= 0) state.projectiles.splice(i, 1);
+        continue;
+      }
+      for (let j = state.enemies.length - 1; j >= 0; j--) {
+        const e = state.enemies[j];
+        const dx = e.x - pr.x;
+        const dy = e.y - pr.y;
+        if (dx * dx + dy * dy < 12 * 12) {
+          if (pr.element) {
+            applySpellDamage(e, pr.dmg, pr.element);
+          } else {
+            e.hp -= Math.max(1, pr.dmg - e.def);
+          }
+          if (pr.slow) e.slow = pr.slow;
+          if (pr.explode) {
+            state.enemies.forEach(other => {
+              const ex = other.x - pr.x;
+              const ey = other.y - pr.y;
+              if (ex * ex + ey * ey < 50 * 50) {
+                if (pr.element) {
+                  applySpellDamage(other, 8, pr.element);
+                } else {
+                  other.hp -= 8;
+                }
+              }
+            });
+          }
+          audio.hit();
+          pr.life = 0;
+          if (e.hp <= 0) {
+            state.enemies.splice(j, 1);
+            state.stats.kills += 1;
+            state.player.xp += 10 + currentZone() * 5;
+            state.gold += 3;
+            if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
+            if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
+          }
+          break;
+        }
+      }
+      if (pr.life <= 0) state.projectiles.splice(i, 1);
+    }
+  };
+
+  const updateParticles = (dt) => {
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const prt = state.particles[i];
+      prt.x += prt.vx * dt;
+      prt.y += prt.vy * dt;
+      prt.life -= dt;
+      if (prt.life <= 0) state.particles.splice(i, 1);
+    }
+  };
+
+  const updateDrops = (dt) => {
+    for (let i = state.drops.length - 1; i >= 0; i--) {
+      const d = state.drops[i];
+      d.bob += dt * 4;
+      const dx = d.x - state.player.x;
+      const dy = d.y - state.player.y;
+      if (dx * dx + dy * dy < DROP_PICKUP_RANGE * DROP_PICKUP_RANGE) {
+        addItem(d.item);
+        state.drops.splice(i, 1);
+      }
+    }
+  };
+
+  const checkLevelUp = () => {
+    if (state.player.xp >= state.player.xpNext) {
+      state.player.xp -= state.player.xpNext;
+      state.player.level++;
+      state.player.xpNext = Math.floor(state.player.xpNext * 1.2);
+      state.player.statPoints += 2;
+      state.player.hpMax += 10;
+      state.player.hp = state.player.hpMax;
+      showToast('Niveau supérieur!');
+    }
+  };
+
+  const onInteract = () => {
+    if (state.dead) return;
+    const zone = currentZone();
+    initZoneFlow(zone);
+    const flow = state.zoneFlow[`zone-${zone}`];
+    const nearest = (items, range) => {
+      let best = null;
+      let bestDist = Infinity;
+      items.forEach(item => {
+        const dx = item.x - state.player.x;
+        const dy = item.y - state.player.y;
+        const dist = dx * dx + dy * dy;
+        if (dist < range * range && dist < bestDist) {
+          best = item;
+          bestDist = dist;
+        }
+      });
+      return best;
+    };
+    const drop = nearest(state.drops, DROP_PICKUP_RANGE);
+    if (drop) {
+      addItem(drop.item);
+      state.drops = state.drops.filter(d => d !== drop);
+      return;
+    }
+    const gate = nearest(state.interactables.filter(i => i.type === 'gate'), GATE_RANGE);
+    if (gate) {
+      if (gate.direction === 'forward' && flow.keyDropped && flow.gate.locked) {
+        flow.gate.locked = false;
+        const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
+        if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
+        showToast('La porte s\'ouvre.');
+      } else if (!flow.gate.locked || gate.direction === 'back') {
+        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
+      }
+      return;
+    }
+    const orb = nearest(state.interactables.filter(i => i.type === 'orb' && i.active), ORB_RANGE);
+    if (orb) {
+      orb.active = false;
+      flow.orbsDestroyed += 1;
+      state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.34, 0, 1);
+      state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
+      showToast(`Noyau détruit ${flow.orbsDestroyed}/3`);
+      if (flow.orbsDestroyed >= 3) {
+        flow.altar.active = true;
+        showToast('L\'autel s\'éveille...');
+      }
+      return;
+    }
+    const altar = nearest(state.interactables.filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
+    if (!flow.isHub && zone % 5 === 4 && altar) {
+      // FIX: boss spawns only once per zone until defeated.
+      if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
+        state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
+        flow.bossState.spawned = true;
+        flow.bossState.alive = true;
+        audio.menu();
+        showToast('Le Seigneur émerge...');
+      }
+      return;
+    }
+    const rest = nearest(state.interactables.filter(i => i.type === 'rest'), REST_RANGE);
+    if (flow.isHub && rest) {
+      state.player.hp = state.player.hpMax;
+      state.player.mana = state.player.manaMax;
+      showToast('Repos accordé.');
+      return;
+    }
+    const nearNpc = nearest(state.npcs, NPC_RANGE);
+    if (nearNpc) {
+      if (nearNpc.role.toLowerCase().includes('marchand')) {
+        state.shopType = nearNpc.role.toLowerCase().includes('mana') ? 'mana' : nearNpc.role.toLowerCase().includes('hp') ? 'hp' : nearNpc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
+        renderShop();
+        openPanel('shop');
+        return;
+      }
+      if (nearNpc.role === 'Forge') {
+        state.player.atk += 1; state.player.def += 1;
+        showToast('Amélioration appliquée');
+        return;
+      }
+      if (nearNpc.role === 'Revente') {
+        const item = state.player.inv.pop();
+        if (item) { state.gold += 10; showToast('Revente effectuée'); }
+        return;
+      }
+      if (nearNpc.role === 'Compagnon' && !nearNpc.recruited) {
+        openDialogue(nearNpc, nearNpc.dialog, [
+          { label: 'Recruter', onPick: () => { nearNpc.recruited = true; spawnCompanion(nearNpc.name.includes('Elyne') ? 'elyne' : 'kael'); showToast(`${nearNpc.name} rejoint votre serment`); } },
+          { label: 'Refuser', onPick: () => showToast('Vous repoussez sa main.') }
+        ]);
+        return;
+      }
+      openDialogue(nearNpc, nearNpc.dialog, [
+        { label: 'Continuer', onPick: () => openPanel('dialogue') }
+      ]);
+      return;
+    }
+    showToast('Rien à faire ici.');
+  };
+
+  const update = (ts) => {
+    if (!state.running || state.paused) { requestAnimationFrame(update); return; }
+    const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
+    state.time = ts;
+    state.runTime += dt;
+    const zoneNow = currentZone();
+    initZoneFlow(zoneNow);
+    if (state.activeZone !== zoneNow) {
+      syncBackGate(zoneNow);
+      state.activeZone = zoneNow;
+    }
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateCompanions(dt);
+    updateBoss(dt);
+    state.spawnTimer = Math.max(0, state.spawnTimer - dt);
+    spawnEnemies();
+    updateProjectiles(dt);
+    updateDrops(dt);
+    checkLevelUp();
+    updateBars();
+    updateMini();
+    updateParticles(dt);
+    if (state.debug) {
+      document.getElementById('debug').textContent = [
+        `seed: ${state.seed}`,
+        `act: ${Math.floor(currentZone() / 5) + 1}`,
+        `zone: ${(currentZone() % 5) + 1}`,
+        `mana: ${state.player.mana.toFixed(0)}/${state.player.manaMax}`,
+        `stamina: ${state.player.stam.toFixed(0)}/${state.player.stamMax}`
+      ].join('\n');
+    }
+    draw();
+    requestAnimationFrame(update);
+  };
+
+  const draw = () => {
+    const p = state.player;
+    const zone = zones[currentZone()];
+    ctx.clearRect(0, 0, W, H);
+    const { camX, camY } = getCamera();
+    const startX = Math.floor(camX / TILE);
+    const startY = Math.floor(camY / TILE);
+    const endX = Math.ceil((camX + W) / TILE);
+    const endY = Math.ceil((camY + H) / TILE);
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        const zoneIndex = Math.floor(x / MAP);
+        const t = tileAt(x % MAP, y, zoneIndex);
+        const px = x * TILE - camX;
+        const py = y * TILE - camY;
+        switch (t) {
+          case 0: ctx.fillStyle = '#1a202c'; break;
+          case 2: ctx.fillStyle = '#123a44'; break;
+          case 3: ctx.fillStyle = '#3b3b45'; break;
+          case 4: ctx.fillStyle = '#1f2d1f'; break;
+          case 5: ctx.fillStyle = '#2a2a32'; break;
+          case 6: ctx.fillStyle = '#7dd3fc'; break;
+          default: ctx.fillStyle = '#0b0f14';
+        }
+        ctx.fillRect(px, py, TILE, TILE);
+      }
+    }
+    const aim = Math.atan2(state.mouse.y + camY - p.y, state.mouse.x + camX - p.x);
+    ctx.save();
+    ctx.translate(p.x - camX, p.y - camY);
+    ctx.rotate(aim);
+    if (p.iFrames > 0) {
+      ctx.globalAlpha = 0.6;
+    }
+    drawPlayerSprite(p);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    state.interactables.forEach(it => {
+      if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
+      else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
+      else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
+      else return;
+      ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+    });
+    getInteractableTargets().forEach(t => {
+      const sx = t.x - camX;
+      const sy = t.y - camY;
+      const label = t.type === 'gate' ? 'Porte'
+        : t.type === 'orb' ? 'Noyau'
+          : t.type === 'altar' ? 'Autel'
+            : t.type === 'npc' ? (t.role && t.role.toLowerCase().includes('marchand') ? 'Marchand' : 'PNJ')
+              : t.type === 'rest' ? 'Repos'
+                : 'Potion';
+      ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
+        : t.type === 'orb' ? '#a855f7'
+          : t.type === 'altar' ? '#f59e0b'
+            : t.type === 'npc' ? '#22c55e'
+              : t.type === 'rest' ? '#22c55e'
+                : '#facc15';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '10px Cinzel, serif';
+      ctx.fillText('E', sx + 6, sy - 6);
+      ctx.fillStyle = '#cbd5f5';
+      ctx.fillText(label, sx + 12, sy + 12);
+    });
+    state.drops.forEach(d => {
+      const bob = Math.sin(d.bob) * 3;
+      ctx.fillStyle = d.color || '#e5e7eb';
+      ctx.beginPath();
+      ctx.arc(d.x - camX, d.y - camY + bob, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(d.x - camX - 1, d.y - camY + bob - 1, 2, 2);
+    });
+    state.companions.forEach(c => {
+      ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
+      ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(c.x - camX - 6, c.y - camY - 8, 12, 2);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(c.x - camX - 6, c.y - camY - 8, 12 * (c.hp / c.hpMax), 2);
+    });
+    state.npcs.forEach(npc => {
+      ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
+      ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
+    });
+    state.projectiles.forEach(pr => {
+      const size = pr.size || 4;
+      ctx.fillStyle = pr.color || '#facc15';
+      if (pr.shape === 'orb') {
+        ctx.beginPath();
+        ctx.arc(pr.x - camX, pr.y - camY, size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (pr.shape === 'arrow') {
+        ctx.fillRect(pr.x - camX - size, pr.y - camY - 1, size * 2, 2);
+      } else {
+        ctx.fillRect(pr.x - camX - size, pr.y - camY - size, size * 2, size * 2);
+      }
+    });
+    state.particles.forEach(prt => {
+      ctx.fillStyle = prt.color || '#facc15';
+      ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
+    });
+    if (state.boss) {
+      ctx.fillStyle = '#1a0f0f';
+      ctx.fillRect(10, 10, 220, 10);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(10, 10, 220 * (state.boss.hp / state.boss.hpMax), 10);
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(state.boss.x - camX - 8, state.boss.y - camY - 8, 16, 16);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(state.boss.x - camX - 10, state.boss.y - camY - 14, 20 * (state.boss.hp / state.boss.hpMax), 3);
+    }
+    state.enemies.forEach(e => {
+      ctx.fillStyle = '#16a34a';
+      ctx.fillRect(e.x - camX - 5, e.y - camY - 5, 10, 10);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(e.x - camX - 5, e.y - camY - 10, 10 * (e.hp / e.hpMax), 2);
+    });
+    ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Cursor (screen space)
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(state.mouse.x, state.mouse.y, 6, 0, Math.PI * 2);
+    ctx.moveTo(state.mouse.x - 10, state.mouse.y);
+    ctx.lineTo(state.mouse.x + 10, state.mouse.y);
+    ctx.moveTo(state.mouse.x, state.mouse.y - 10);
+    ctx.lineTo(state.mouse.x, state.mouse.y + 10);
+    ctx.stroke();
+  };
+
+  const saveGame = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showToast('Sauvegarde effectuée');
+  };
+
+  const loadGame = () => {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return false;
+    Object.assign(state, JSON.parse(data));
+    state.running = true; state.paused = false; state.dead = false;
+    if (state.player && state.player.classKey && classes[state.player.classKey]) {
+      const base = classes[state.player.classKey];
+      state.player.ranged = true;
+      state.player.attackType = base.attackType;
+      state.player.projectileSpeed = base.projectileSpeed;
+      state.player.projectileColor = base.projectileColor;
+      state.player.projectileSize = base.projectileSize;
+      state.player.weapon = base.weapon;
+    }
+    if (!state.stats) state.stats = { kills: 0, loot: 0 };
+    if (!state.explored) state.explored = {};
+    if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
+    if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
+    if (!state.minimapZoom) state.minimapZoom = 20;
+    if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
+    if (!state.lastDamageSource) state.lastDamageSource = 'Inconnu';
+    Object.values(state.zoneFlow || {}).forEach(flow => {
+      if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
+    });
+    if (state.boss) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) {
+        flow.bossState.spawned = true;
+        flow.bossState.alive = true;
+      }
+    }
+    if (!state.npcs || !state.npcs.length) buildNpcInstances();
+    audio.init();
+    audio.ambient(currentZone());
+    hideAll();
+    return true;
+  };
+
+  const hideAll = () => {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('classMenu').style.display = 'none';
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('inventory').style.display = 'none';
+    document.getElementById('character').style.display = 'none';
+    document.getElementById('journal').style.display = 'none';
+    document.getElementById('options').style.display = 'none';
+    document.getElementById('guide').style.display = 'none';
+    document.getElementById('credits').style.display = 'none';
+    document.getElementById('gameOver').style.display = 'none';
+    document.getElementById('dialogue').style.display = 'none';
+    document.getElementById('shop').style.display = 'none';
+  };
+
+  const openPanel = (id, pause = true) => {
+    hideAll();
+    document.getElementById(id).style.display = 'flex';
+    state.paused = pause && state.running;
+  };
+
+  const closeOverlay = () => {
+    hideAll();
+    state.paused = false;
+  };
+
+  const renderInventory = () => {
+    const equip = document.getElementById('equipTab');
+    const consumables = document.getElementById('consumablesTab');
+    const allies = document.getElementById('alliesTab');
+    const questsPanel = document.getElementById('questsTab');
+    equip.innerHTML = '';
+    consumables.innerHTML = '';
+    allies.innerHTML = '';
+    questsPanel.innerHTML = '';
+    const layout = document.createElement('div');
+    layout.className = 'inv-layout';
+    const left = document.createElement('div');
+    const center = document.createElement('div');
+    const right = document.createElement('div');
+    left.innerHTML = '<div class="inv-slot">Arme</div><div class="inv-slot">Armure</div><div class="inv-slot">Accessoire</div>';
+    right.innerHTML = '<div class="inv-slot">Bottes</div><div class="inv-slot">Casque</div><div class="inv-slot">Anneau</div>';
+    center.className = 'inv-center';
+    center.innerHTML = `<div class="small">Marqué</div><div class="item">ATK ${state.player.atk} · DEF ${state.player.def} · PV ${state.player.hpMax}</div>`;
+    layout.appendChild(left);
+    layout.appendChild(center);
+    layout.appendChild(right);
+    equip.appendChild(layout);
+    const grid = document.createElement('div');
+    grid.className = 'inv-grid';
+    state.player.inv.forEach((it, idx) => {
+      if (it.type === 'potion' || it.type === 'mana_potion') return;
+      const cell = document.createElement('div');
+      cell.className = `inv-cell ${it.rarity || ''}`;
+      cell.textContent = it.name;
+      cell.dataset.equip = idx;
+      grid.appendChild(cell);
+    });
+    equip.appendChild(grid);
+    const potionIndexes = state.player.inv.map((it, idx) => (it.type === 'potion' || it.type === 'mana_potion') ? idx : null).filter(idx => idx !== null);
+    if (!potionIndexes.length) {
+      consumables.innerHTML = '<div class="item">Aucune potion.</div>';
+    } else {
+      potionIndexes.forEach((idx) => {
+        const it = state.player.inv[idx];
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<div><strong>${it.name}</strong></div><button data-use="${idx}">Utiliser</button>`;
+        consumables.appendChild(div);
+      });
+    }
+    state.companions.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${c.name}</strong><div class="small">Rôle: ${c.role}</div>`;
+      allies.appendChild(div);
+    });
+    quests.forEach(q => {
+      const done = state.quests[q.id]?.done;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>`;
+      questsPanel.appendChild(div);
+    });
+  };
+
+  const renderCharacter = () => {
+    const stats = document.getElementById('statsPanel');
+    const points = document.getElementById('pointsPanel');
+    const talents = document.getElementById('talentsPanel');
+    stats.innerHTML = `
+      <div class="small">Niveau: ${state.player.level}</div>
+      <div class="small">XP: ${state.player.xp}/${state.player.xpNext}</div>
+      <div class="small">Or: ${state.gold}</div>
+      <div class="small">Matériaux: ${state.materials}</div>
+      <div class="small">Potions: ${state.player.inv.filter(it => it.type === 'potion').length}</div>
+    `;
+    points.innerHTML = '';
+    ['str','agi','spi','vit'].forEach(stat => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `${stat.toUpperCase()} : ${state.player.stats[stat]} <button data-stat="${stat}">+</button>`;
+      points.appendChild(div);
+    });
+    talents.innerHTML = '';
+    talentTrees[state.player.classKey].forEach((t, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.textContent = `${i + 1}. ${t}`;
+      talents.appendChild(div);
+    });
+  };
+
+  const renderJournal = () => {
+    const questTab = document.getElementById('questTab');
+    const loreTab = document.getElementById('loreTab');
+    questTab.innerHTML = '';
+    loreTab.innerHTML = '';
+    quests.forEach(q => {
+      const done = state.quests[q.id]?.done;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span><div>${q.desc}</div>`;
+      questTab.appendChild(div);
+    });
+    lore.forEach((entry, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>Chronique ${i + 1}</strong><div>${entry}</div>`;
+      loreTab.appendChild(div);
+    });
+  };
+
+  const shopStock = [
+    { name: 'Potion', type: 'potion', price: 15 },
+    { name: 'Amulette ternie', item: { name: 'amulet rare', slot: 'amulet', rarity: 'rare', affix: '+resist brume' }, price: 60 },
+    { name: 'Armure d\'écaille', item: { name: 'armor rare', slot: 'armor', rarity: 'rare', affix: '+def' }, price: 75 }
+  ];
+
+  const openDialogue = (npc, text, choices) => {
+    document.getElementById('dialogueName').textContent = npc.name;
+    document.getElementById('dialogueText').textContent = text || npc.dialog;
+    const list = document.getElementById('dialogueChoices');
+    list.innerHTML = '';
+    choices.forEach(choice => {
+      const btn = document.createElement('button');
+      btn.textContent = choice.label;
+      btn.addEventListener('click', () => {
+        choice.onPick();
+        closeOverlay();
+      });
+      list.appendChild(btn);
+    });
+    openPanel('dialogue');
+  };
+
+  const drawPlayerSprite = (p) => {
+    const colors = {
+      blade: { armor: '#e5e7eb', trim: '#60a5fa', accent: '#facc15', shadow: '#334155' },
+      arcanist: { robe: '#1e3a8a', robeDark: '#1e293b', beard: '#f8fafc', gem: '#38bdf8' },
+      hunter: { hood: '#111827', cloak: '#374151', hair: '#f97316', belt: '#7f1d1d' }
+    };
+    if (p.classKey === 'blade') {
+      ctx.fillStyle = colors.blade.shadow;
+      ctx.fillRect(-5, 2, 10, 4);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(-4, -5, 8, 8);
+      ctx.fillStyle = colors.blade.trim;
+      ctx.fillRect(-3, -4, 6, 3);
+      ctx.fillStyle = colors.blade.accent;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(3, -2, 5, 2);
+      ctx.fillRect(4, -1, 2, 6);
+    } else if (p.classKey === 'arcanist') {
+      ctx.fillStyle = colors.arcanist.robeDark;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.arcanist.robe;
+      ctx.fillRect(-4, -5, 8, 7);
+      ctx.fillStyle = colors.arcanist.beard;
+      ctx.fillRect(-2, -1, 4, 3);
+      ctx.fillStyle = colors.arcanist.gem;
+      ctx.fillRect(3, -6, 2, 2);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(4, -5, 2, 10);
+    } else if (p.classKey === 'hunter') {
+      ctx.fillStyle = colors.hunter.cloak;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.hunter.hood;
+      ctx.fillRect(-4, -5, 8, 6);
+      ctx.fillStyle = colors.hunter.hair;
+      ctx.fillRect(-2, -3, 4, 2);
+      ctx.fillStyle = colors.hunter.belt;
+      ctx.fillRect(-3, 1, 6, 2);
+      ctx.fillStyle = '#a16207';
+      ctx.fillRect(4, -2, 3, 1);
+      ctx.fillRect(5, -3, 1, 4);
+    } else {
+      ctx.fillStyle = '#f87171';
+      ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
+    }
+  };
+
+  const renderShop = () => {
+    document.getElementById('shopGold').textContent = state.gold;
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    const stock = state.shopType === 'mana'
+      ? [{ name: 'Potion de Mana', type: 'mana_potion', price: 20 }]
+      : state.shopType === 'hp'
+        ? [{ name: 'Potion', type: 'potion', price: 15 }]
+        : state.shopType === 'equipment'
+          ? shopStock
+          : shopStock;
+    stock.forEach((s) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${s.name}</strong> <span class="small">${s.price} or</span>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Acheter';
+      btn.addEventListener('click', () => {
+        if (state.gold < s.price) return showToast('Or insuffisant');
+        state.gold -= s.price;
+        if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
+        if (s.type === 'mana_potion') addItem({ type: 'mana_potion', name: 'Potion de Mana' });
+        if (s.item) addItem({ ...s.item });
+        renderShop();
+      });
+      div.appendChild(btn);
+      list.appendChild(div);
+    });
+  };
+
+  const applySettings = () => {
+    document.documentElement.style.fontSize = settings.textSize === 1 ? '16px' : settings.textSize === 2 ? '18px' : '14px';
+    document.getElementById('toggleShake').textContent = `Screen shake: ${settings.shake ? 'ON' : 'OFF'}`;
+    document.getElementById('toggleParticles').textContent = `Particles: ${settings.lowParticles ? 'LOW' : 'HIGH'}`;
+    document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
+    document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
+    document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
+  };
+
+  const loadSettings = () => {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) Object.assign(settings, JSON.parse(data));
+    applySettings();
+  };
+
+  const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+  const startGame = (clsKey) => {
+    state.player = createPlayer(clsKey);
+    state.running = true;
+    state.paused = false;
+    state.dead = false;
+    state.lastDamageSource = 'Inconnu';
+    state.activeZone = 0;
+    state.runTime = 0;
+    state.stats = { kills: 0, loot: 0 };
+    state.explored = {};
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: 0 };
+    state.enemies.length = 0;
+    state.companions.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
+    state.particles.length = 0;
+    state.drops.length = 0;
+    state.interactables.length = 0;
+    state.zoneFlow = {};
+    state.zoneCorruption = Array(25).fill(1);
+    state.clearedZones = 0;
+    state.materials = 0;
+    state.gold = 0;
+    state.corruptionAbsorbed = 0;
+    state.quests = {};
+    quests.forEach(q => state.quests[q.id] = { done: false });
+    lore.forEach((_, i) => state.loreFound[i] = false);
+    buildNpcInstances();
+    state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
+    hideAll();
+    audio.init();
+    audio.ambient(currentZone());
+    showToast('Le serment s\'éveille...');
+  };
+
+  const setTabs = (root, tabs) => {
+    root.querySelectorAll('button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        root.querySelectorAll('button[data-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        tabs.forEach(t => document.getElementById(t).classList.add('hidden'));
+        document.getElementById(btn.dataset.tab + 'Tab').classList.remove('hidden');
+      });
+    });
+  };
+
+  document.getElementById('newBtn').addEventListener('click', () => openPanel('classMenu'));
+  document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
+  document.getElementById('guideBtn').addEventListener('click', () => openPanel('guide', false));
+  document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
+  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('optBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('guideClose').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
+  document.getElementById('shopClose').addEventListener('click', closeOverlay);
+  document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
+  document.getElementById('saveBtn').addEventListener('click', saveGame);
+  document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
+  const restartAct = () => {
+    const actStart = Math.floor(currentZone() / 5) * 5;
+    state.running = true;
+    state.dead = false;
+    state.paused = false;
+    state.player.hp = state.player.hpMax;
+    state.player.mana = state.player.manaMax;
+    state.player.x = actStart * MAP * TILE + 30 * TILE;
+    state.player.y = 30 * TILE;
+    state.enemies.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
+    state.drops.length = 0;
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    if (actStart % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    hideAll();
+  };
+
+  document.getElementById('gameOverRestart').addEventListener('click', () => restartAct());
+  document.getElementById('gameOverContinue').addEventListener('click', () => continueFromCheckpoint());
+  document.getElementById('gameOverMenu').addEventListener('click', () => { state.paused = false; state.running = false; state.dead = false; openPanel('menu'); });
+
+  document.getElementById('toggleShake').addEventListener('click', () => { settings.shake = !settings.shake; applySettings(); saveSettings(); });
+  document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
+  document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
+  document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
+  document.getElementById('musicVolume').addEventListener('input', (e) => {
+    settings.volume = clamp(Number(e.target.value) / 100, 0, 1);
+    applySettings();
+    saveSettings();
+  });
+
+  document.getElementById('equipTab').addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-equip]');
+    if (cell) {
+      const idx = Number(cell.dataset.equip);
+      const item = state.player.inv.splice(idx, 1)[0];
+      if (item) state.player.equip[item.slot] = item;
+      renderInventory();
+    }
+  });
+  document.getElementById('consumablesTab').addEventListener('click', (e) => {
+    if (e.target.matches('button[data-use]')) {
+      const idx = Number(e.target.dataset.use);
+      const item = state.player.inv[idx];
+      if (item && item.type === 'potion') {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+        renderInventory();
+      } else if (item && item.type === 'mana_potion') {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
+        renderInventory();
+      }
+    }
+  });
+
+  document.getElementById('pointsPanel').addEventListener('click', (e) => {
+    if (!e.target.matches('button[data-stat]')) return;
+    if (state.player.statPoints <= 0) return;
+    const stat = e.target.dataset.stat;
+    state.player.stats[stat] += 1; state.player.statPoints -= 1;
+    renderCharacter();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (state.dead) return;
+    if (e.key === 'Escape' && state.spellWheel.open) {
+      closeSpellWheel();
+      return;
+    }
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
+    if (e.key === ' ') keys.attack = true;
+    if (e.key.toLowerCase() === 'e') keys.interact = true;
+    if (e.key === 'Shift') keys.dash = true;
+    if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
+    if (e.key === 'c') { openPanel('character'); renderCharacter(); }
+    if (e.key === 'q') { openPanel('journal'); renderJournal(); }
+    if (e.key.toLowerCase() === 'r') openSpellWheel();
+    if (e.key === '+' || e.key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
+    if (e.key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
+    if (e.key.toLowerCase() === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
+    if (e.key.toLowerCase() === 'h') {
+      const idx = state.player.inv.findIndex(it => it.type === 'potion');
+      if (idx >= 0) {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+      }
+    }
+    if (e.key.toLowerCase() === 'm') {
+      const idx = state.player.inv.findIndex(it => it.type === 'mana_potion');
+      if (idx >= 0) {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
+      }
+    }
+    if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = false;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
+    if (e.key === ' ') keys.attack = false;
+    if (e.key.toLowerCase() === 'e') keys.interact = false;
+    if (e.key === 'Shift') keys.dash = false;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  window.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
+  canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); openSpellWheel(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
+  window.addEventListener('blur', () => state.paused = true);
+
+  setInterval(() => {
+    if (!state.running || state.dead) return;
+    if (keys.attack) doAttack();
+    if (keys.interact) onInteract();
+    if (keys.dash) keys.dash = false;
+  }, 200);
+
+  const joy = document.getElementById('joy');
+  const joyDot = document.getElementById('joyDot');
+  const setJoy = (clientX, clientY) => {
+    const rect = joy.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    const dist = Math.min(Math.hypot(dx, dy), rect.width / 2 - 6);
+    const ang = Math.atan2(dy, dx);
+    joyVec.x = Math.cos(ang) * (dist / (rect.width / 2));
+    joyVec.y = Math.sin(ang) * (dist / (rect.height / 2));
+    joyDot.style.left = `${rect.width / 2 + joyVec.x * 40 - 18}px`;
+    joyDot.style.top = `${rect.height / 2 + joyVec.y * 40 - 18}px`;
+  };
+  joy.addEventListener('pointerdown', (e) => { joyActive = true; setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointermove', (e) => { if (joyActive) setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointerup', () => { joyActive = false; joyVec.x = 0; joyVec.y = 0; joyDot.style.left = '42px'; joyDot.style.top = '42px'; });
+
+  document.querySelectorAll('.mobBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.act;
+      if (state.dead) return;
+      if (action === 'attack') doAttack();
+      if (action === 'interact') onInteract();
+      if (action === 'inventory') { openPanel('inventory'); renderInventory(); }
+      if (action === 'pause') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+    });
+  });
+
+  const spellWheel = document.getElementById('spell-wheel');
+  spellWheel.addEventListener('click', (e) => {
+    if (!state.spellWheel.open) return;
+    const slot = e.target.closest('.slot');
+    if (slot) {
+      const idx = Number(slot.dataset.slot);
+      const spell = state.spellWheel.options[idx];
+      if (spell) castSpell(spell);
+    }
+    closeSpellWheel();
+  });
+
+  const resize = () => {
+    const { innerWidth: iw, innerHeight: ih } = window;
+    const ratio = 16 / 9;
+    let w = iw; let h = iw / ratio;
+    if (h > ih) { h = ih; w = ih * ratio; }
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  };
+  window.addEventListener('resize', resize);
+
+  const classList = document.getElementById('classList');
+  Object.entries(classes).forEach(([key, c]) => {
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.innerHTML = `<strong>${c.name}</strong><div>${c.skill}</div><div class="small">PV ${c.hp} · Mana ${c.mana} · ATK ${c.atk}</div><button>Choisir</button>`;
+    card.querySelector('button').addEventListener('click', () => startGame(key));
+    classList.appendChild(card);
+  });
+
+  setTabs(document.getElementById('inventory'), ['equipTab', 'consumablesTab', 'alliesTab', 'questsTab']);
+  setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
+
+  loadSettings();
+  resize();
+  openPanel('menu', false);
+  requestAnimationFrame(update);
+
+  // PokiSDK hooks (optional)
+  window.gameplayStart = window.gameplayStart || function () {};
+  window.gameplayStop = window.gameplayStop || function () {};
+  window.requestCommercialBreak = window.requestCommercialBreak || function () {};
+  window.requestRewardedBreak = window.requestRewardedBreak || function () {};
+})();
+</script>
+</body>
+</html>
