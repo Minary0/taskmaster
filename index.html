@@ -1082,12 +1082,18 @@ button:active { transform: translateY(1px); }
     mctx.fillRect(0, 0, mini.width, mini.height);
     const startX = Math.floor(playerLocalX / TILE) - Math.floor(viewTiles / 2);
     const startY = Math.floor(playerLocalY / TILE) - Math.floor(viewTiles / 2);
+    const isExplored = (x, y) => state.explored[zoneIndex]?.has(`${x},${y}`);
+    const isNearPlayer = (x, y) => {
+      const dx = x * TILE + TILE / 2 - playerLocalX;
+      const dy = y * TILE + TILE / 2 - playerLocalY;
+      return dx * dx + dy * dy < (TILE * 3) * (TILE * 3);
+    };
     for (let y = 0; y < viewTiles; y++) {
       for (let x = 0; x < viewTiles; x++) {
         const tx = startX + x;
         const ty = startY + y;
         const t = tileAt(tx, ty, zoneIndex);
-        const explored = state.explored[zoneIndex]?.has(`${tx},${ty}`);
+        const explored = isExplored(tx, ty);
         if (!explored) {
           mctx.fillStyle = '#0b0f16';
           mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
@@ -1105,6 +1111,9 @@ button:active { transform: translateY(1px); }
     const drawDot = (x, y, color, size = 2) => {
       const dx = (x - zoneIndex * MAP * TILE) - playerLocalX + (viewTiles * TILE) / 2;
       const dy = y - playerLocalY + (viewTiles * TILE) / 2;
+      const tx = Math.floor((x - zoneIndex * MAP * TILE) / TILE);
+      const ty = Math.floor(y / TILE);
+      if (!isExplored(tx, ty) && !isNearPlayer(tx, ty)) return;
       mctx.fillStyle = color;
       mctx.fillRect(dx * scale - size / 2, dy * scale - size / 2, size, size);
     };
