@@ -1971,10 +1971,13 @@ button:active { transform: translateY(1px); }
         const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
         if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
         showToast('La porte s\'ouvre.');
-      } else if (!flow.gate.locked || gate.direction === 'back') {
-        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
+        return;
       }
-      return;
+      if (!gate.locked) {
+        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
+        return;
+      }
+      showToast('Porte verrouillée.');
     }
     const orb = nearest(getActiveInteractables().filter(i => i.type === 'orb' && i.active), ORB_RANGE);
     if (orb) {
