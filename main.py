@@ -10,7 +10,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Iterable
+from typing import Callable, Iterable, List, Optional, Tuple
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm"}
 
@@ -23,7 +23,7 @@ class DownloaderError(RuntimeError):
     pass
 
 
-def ensure_ffmpeg_available() -> tuple[str, str]:
+def ensure_ffmpeg_available() -> Tuple[str, str]:
     """Return ffmpeg/ffprobe paths from PATH or local ./bin."""
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -59,7 +59,7 @@ def ensure_downloader_available() -> str:
     return downloader
 
 
-def download_video(url: str, output_dir: Path, logger: callable) -> Path:
+def download_video(url: str, output_dir: Path, logger: Callable[[str], None]) -> Path:
     downloader = ensure_downloader_available()
     output_dir.mkdir(parents=True, exist_ok=True)
     template = str(output_dir / "%(title)s.%(ext)s")
@@ -113,7 +113,7 @@ def build_ffmpeg_command(
     duration: float,
     mode: str,
     ffmpeg_path: str,
-) -> list[str]:
+) -> List[str]:
     if mode == "fast":
         return [
             ffmpeg_path,
@@ -161,8 +161,8 @@ def split_video(
     segment_duration: int,
     mode: str,
     output_ext: str,
-    logger: callable,
-    progress: callable,
+    logger: Callable[[str], None],
+    progress: Callable[[int, int], None],
 ) -> Iterable[Path]:
     ffmpeg_path, _ = ensure_ffmpeg_available()
     validate_paths(input_path, output_dir)
@@ -171,7 +171,7 @@ def split_video(
     logger(
         f"Durée totale: {total_duration:.2f}s | Segments: {total_segments} | Mode: {mode}"
     )
-    results: list[Path] = []
+    results: List[Path] = []
     for index in range(total_segments):
         start = index * segment_duration
         duration = min(segment_duration, total_duration - start)
@@ -254,11 +254,11 @@ class VideoSplitterApp(tk.Tk):
         self.style = ttk.Style(self)
         self.dark_mode = tk.BooleanVar(value=False)
 
-        self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
-        self.worker_thread: threading.Thread | None = None
-        self.output_paths: list[Path] = []
-        self.total_duration: float | None = None
-        self.source_path: Path | None = None
+        self.event_queue: "queue.Queue[Tuple[str, object]]" = queue.Queue()
+        self.worker_thread: Optional[threading.Thread] = None
+        self.output_paths: List[Path] = []
+        self.total_duration: Optional[float] = None
+        self.source_path: Optional[Path] = None
 
         self._build_ui()
         self._configure_styles()

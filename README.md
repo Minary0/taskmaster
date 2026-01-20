@@ -16,7 +16,7 @@ Application de bureau multiplateforme pour découper une vidéo en segments de d
 
 ## Prérequis
 
-- Python 3.10+
+- Python 3.9+
 - FFmpeg + FFprobe installés et accessibles dans le `PATH`.
 - (Option URL) `yt-dlp` installé et accessible dans le `PATH`.
 
