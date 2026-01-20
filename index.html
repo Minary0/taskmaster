@@ -245,6 +245,8 @@ button:active { transform: translateY(1px); }
   const H = 540;
   const TILE = 16;
   const MAP = 64;
+  const INTERACT_RANGE = 42;
+  const NPC_INTERACT_RANGE = 56;
 
   const settings = {
     shake: true,
@@ -262,9 +264,54 @@ button:active { transform: translateY(1px); }
   ];
 
   const classes = {
-    blade: { name: 'Lame', hp: 120, stam: 120, mana: 40, atk: 12, def: 6, crit: 0.05, speed: 120, skill: 'Frappe du Serment' },
-    arcanist: { name: 'Arcaniste', hp: 90, stam: 80, mana: 140, atk: 10, def: 3, crit: 0.08, speed: 110, skill: 'Lance-Voile' },
-    hunter: { name: 'Traqueur', hp: 100, stam: 110, mana: 70, atk: 11, def: 4, crit: 0.12, speed: 130, skill: 'Traque Cendrée' }
+    blade: {
+      name: 'Lame',
+      hp: 120,
+      stam: 120,
+      mana: 40,
+      atk: 12,
+      def: 6,
+      crit: 0.05,
+      speed: 120,
+      skill: 'Frappe du Serment',
+      attackType: 'slashwave',
+      projectileSpeed: 200,
+      projectileColor: '#93c5fd',
+      projectileSize: 5,
+      weapon: 'sword'
+    },
+    arcanist: {
+      name: 'Arcaniste',
+      hp: 90,
+      stam: 80,
+      mana: 140,
+      atk: 10,
+      def: 3,
+      crit: 0.08,
+      speed: 110,
+      skill: 'Lance-Voile',
+      attackType: 'orb',
+      projectileSpeed: 230,
+      projectileColor: '#a855f7',
+      projectileSize: 4,
+      weapon: 'staff'
+    },
+    hunter: {
+      name: 'Traqueur',
+      hp: 100,
+      stam: 110,
+      mana: 70,
+      atk: 11,
+      def: 4,
+      crit: 0.12,
+      speed: 130,
+      skill: 'Traque Cendrée',
+      attackType: 'arrow',
+      projectileSpeed: 280,
+      projectileColor: '#f59e0b',
+      projectileSize: 3,
+      weapon: 'bow'
+    }
   };
 
   const talentTrees = {
@@ -426,6 +473,14 @@ button:active { transform: translateY(1px); }
 
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
+    const gateY = 24;
+    const gateGap = Math.abs(ty - gateY) <= 1;
+    if (zone > 0 && (tx === 0 || tx === 1)) {
+      return gateGap ? 0 : 6; // ice wall
+    }
+    if (zone < zones.length - 1 && (tx === MAP - 1 || tx === MAP - 2)) {
+      return gateGap ? 0 : 6; // ice wall
+    }
     const n = noise(tx, ty, state.seed + zone * 77);
     if (n < 0.03) return 2; // water
     if (n < 0.06) return 3; // rock
@@ -434,12 +489,21 @@ button:active { transform: translateY(1px); }
     return 0; // ground
   };
 
-  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5;
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6;
 
   const isSolidAt = (x, y) => {
     const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
     const tx = Math.floor((x % (MAP * TILE)) / TILE);
     const ty = Math.floor(y / TILE);
+    if (state.interactables) {
+      const gateBlock = state.interactables.some(it => {
+        if (it.type !== 'gate' || !it.locked) return false;
+        const dx = it.x - x;
+        const dy = it.y - y;
+        return dx * dx + dy * dy < 12 * 12;
+      });
+      if (gateBlock) return true;
+    }
     return isSolid(tileAt(tx, ty, zoneIndex));
   };
 
@@ -541,7 +605,12 @@ button:active { transform: translateY(1px); }
       atk: base.atk,
       def: base.def,
       crit: base.crit,
-      ranged: clsKey !== 'blade',
+      ranged: true,
+      attackType: base.attackType,
+      projectileSpeed: base.projectileSpeed,
+      projectileColor: base.projectileColor,
+      projectileSize: base.projectileSize,
+      weapon: base.weapon,
       size: 4,
       speed: base.speed,
       level: 1,
@@ -589,9 +658,16 @@ button:active { transform: translateY(1px); }
       });
     }
     const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
-    const gate = { id: `gate-${zone}`, type: 'gate', x: zone * MAP * TILE + (MAP - 4) * TILE, y: 24 * TILE, locked: true };
-    state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, keyDropped: false, bossDefeated: false };
+    const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - 2) * TILE, y: 24 * TILE, locked: true };
+    let backGate = null;
+    if (zone > 0) {
+      const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
+      const unlocked = prevFlow ? !prevFlow.gate.locked : false;
+      backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + 2 * TILE, y: 24 * TILE, locked: !unlocked };
+    }
+    state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, backGate, keyDropped: false, bossDefeated: false };
     state.interactables.push(...orbs, altar, gate);
+    if (backGate) state.interactables.push(backGate);
   };
 
   const rollItem = (zoneIndex) => {
@@ -831,8 +907,8 @@ button:active { transform: translateY(1px); }
     const p = state.player;
     p.stam -= 10;
     const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
-    if (!p.ranged) {
-      const range = 22;
+    if (p.attackType === 'slashwave') {
+      const range = 26;
       for (let i = state.enemies.length - 1; i >= 0; i--) {
         const e = state.enemies[i];
         const dx = e.x - p.x;
@@ -850,15 +926,43 @@ button:active { transform: translateY(1px); }
         }
       }
       bossHitCheck(p.atk, p.x, p.y);
+      state.projectiles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(angle) * p.projectileSpeed,
+        vy: Math.sin(angle) * p.projectileSpeed,
+        life: 0.7,
+        dmg: p.atk + 3,
+        size: p.projectileSize + 1,
+        color: p.projectileColor,
+        shape: 'wave'
+      });
+      return;
+    }
+    if (p.attackType === 'orb') {
+      state.projectiles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(angle) * p.projectileSpeed,
+        vy: Math.sin(angle) * p.projectileSpeed,
+        life: 1.1,
+        dmg: p.atk + 4,
+        size: p.projectileSize,
+        color: p.projectileColor,
+        shape: 'orb'
+      });
       return;
     }
     state.projectiles.push({
       x: p.x,
       y: p.y,
-      vx: Math.cos(angle) * 240,
-      vy: Math.sin(angle) * 240,
+      vx: Math.cos(angle) * p.projectileSpeed,
+      vy: Math.sin(angle) * p.projectileSpeed,
       life: 1.0,
-      dmg: p.atk + 4
+      dmg: p.atk + 5,
+      size: p.projectileSize,
+      color: p.projectileColor,
+      shape: 'arrow'
     });
   };
 
@@ -876,7 +980,17 @@ button:active { transform: translateY(1px); }
     p.skillCooldown = spell.cd;
     if (slot === 1) {
       const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * spell.speed, vy: Math.sin(angle) * spell.speed, life: 1.2, dmg: spell.dmg + p.stats.spi });
+      state.projectiles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(angle) * spell.speed,
+        vy: Math.sin(angle) * spell.speed,
+        life: 1.2,
+        dmg: spell.dmg + p.stats.spi,
+        size: 4,
+        color: '#38bdf8',
+        shape: 'orb'
+      });
     } else if (slot === 2) {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
@@ -897,7 +1011,7 @@ button:active { transform: translateY(1px); }
       pr.life -= dt;
       if (isSolidAt(pr.x, pr.y)) pr.life = 0;
       if (!settings.lowParticles && Math.random() > 0.4) {
-        state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: '#facc15' });
+        state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: pr.color || '#facc15' });
       }
       if (bossHitCheck(pr.dmg, pr.x, pr.y)) {
         pr.life = 0;
@@ -940,7 +1054,7 @@ button:active { transform: translateY(1px); }
       d.bob += dt * 4;
       const dx = d.x - state.player.x;
       const dy = d.y - state.player.y;
-      if (dx * dx + dy * dy < 14 * 14) {
+      if (dx * dx + dy * dy < 22 * 22) {
         addItem(d.item);
         state.drops.splice(i, 1);
       }
@@ -963,7 +1077,7 @@ button:active { transform: translateY(1px); }
     const zone = currentZone();
     initZoneFlow(zone);
     const flow = state.zoneFlow[`zone-${zone}`];
-    const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.hypot(i.x - state.player.x, i.y - state.player.y) < 24);
+    const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.hypot(i.x - state.player.x, i.y - state.player.y) < INTERACT_RANGE);
     if (orb) {
       orb.active = false;
       flow.orbsDestroyed += 1;
@@ -974,22 +1088,32 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < 30 && !state.boss) {
+    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE && !state.boss) {
       state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
       audio.menu();
       showToast('Le Seigneur émerge...');
       return;
     }
-    if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < 30) {
+    if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
       flow.gate.locked = false;
+      const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
+      if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
       showToast('La porte s\'ouvre.');
-      state.player.x = (zone + 1) * MAP * TILE + 20 * TILE;
+      state.player.x = (zone + 1) * MAP * TILE + 6 * TILE;
+      return;
+    }
+    if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
+      state.player.x = (zone + 1) * MAP * TILE + 6 * TILE;
+      return;
+    }
+    if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
+      state.player.x = (zone - 1) * MAP * TILE + (MAP - 6) * TILE;
       return;
     }
     const nearNpc = state.npcs.find(npc => {
       const dx = npc.x - state.player.x;
       const dy = npc.y - state.player.y;
-      return dx * dx + dy * dy < 40 * 40;
+      return dx * dx + dy * dy < NPC_INTERACT_RANGE * NPC_INTERACT_RANGE;
     });
     if (nearNpc) {
       if (nearNpc.role.toLowerCase().includes('marchand')) {
@@ -1024,6 +1148,7 @@ button:active { transform: translateY(1px); }
     if (!state.running || state.paused) { requestAnimationFrame(update); return; }
     const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
     state.time = ts;
+    initZoneFlow(currentZone());
     updatePlayer(dt);
     updateEnemies(dt);
     updateCompanions(dt);
@@ -1062,6 +1187,7 @@ button:active { transform: translateY(1px); }
           case 3: ctx.fillStyle = '#3b3b45'; break;
           case 4: ctx.fillStyle = '#1f2d1f'; break;
           case 5: ctx.fillStyle = '#2a2a32'; break;
+          case 6: ctx.fillStyle = '#7dd3fc'; break;
           default: ctx.fillStyle = '#0b0f14';
         }
         ctx.fillRect(px, py, TILE, TILE);
@@ -1071,10 +1197,11 @@ button:active { transform: translateY(1px); }
     ctx.save();
     ctx.translate(p.x - camX, p.y - camY);
     ctx.rotate(aim);
-    ctx.fillStyle = p.iFrames > 0 ? '#f8fafc' : '#f87171';
-    ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
-    ctx.fillStyle = '#cbd5f5';
-    ctx.fillRect(p.size + 1, -1, 6, 2);
+    if (p.iFrames > 0) {
+      ctx.globalAlpha = 0.6;
+    }
+    drawPlayerSprite(p);
+    ctx.globalAlpha = 1;
     ctx.restore();
     state.interactables.forEach(it => {
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
@@ -1100,8 +1227,19 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
       ctx.fillRect(npc.x - camX - 3, npc.y - camY - 3, 6, 6);
     });
-    ctx.fillStyle = '#facc15';
-    state.projectiles.forEach(pr => ctx.fillRect(pr.x - camX - 2, pr.y - camY - 2, 4, 4));
+    state.projectiles.forEach(pr => {
+      const size = pr.size || 4;
+      ctx.fillStyle = pr.color || '#facc15';
+      if (pr.shape === 'orb') {
+        ctx.beginPath();
+        ctx.arc(pr.x - camX, pr.y - camY, size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (pr.shape === 'arrow') {
+        ctx.fillRect(pr.x - camX - size, pr.y - camY - 1, size * 2, 2);
+      } else {
+        ctx.fillRect(pr.x - camX - size, pr.y - camY - size, size * 2, size * 2);
+      }
+    });
     state.particles.forEach(prt => {
       ctx.fillStyle = prt.color || '#facc15';
       ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
@@ -1143,6 +1281,15 @@ button:active { transform: translateY(1px); }
     if (!data) return false;
     Object.assign(state, JSON.parse(data));
     state.running = true; state.paused = false;
+    if (state.player && state.player.classKey && classes[state.player.classKey]) {
+      const base = classes[state.player.classKey];
+      state.player.ranged = true;
+      state.player.attackType = base.attackType;
+      state.player.projectileSpeed = base.projectileSpeed;
+      state.player.projectileColor = base.projectileColor;
+      state.player.projectileSize = base.projectileSize;
+      state.player.weapon = base.weapon;
+    }
     if (!state.npcs || !state.npcs.length) buildNpcInstances();
     audio.init();
     audio.ambient(currentZone());
@@ -1263,6 +1410,53 @@ button:active { transform: translateY(1px); }
     openPanel('dialogue');
   };
 
+  const drawPlayerSprite = (p) => {
+    const colors = {
+      blade: { armor: '#e5e7eb', trim: '#60a5fa', accent: '#facc15', shadow: '#334155' },
+      arcanist: { robe: '#1e3a8a', robeDark: '#1e293b', beard: '#f8fafc', gem: '#38bdf8' },
+      hunter: { hood: '#111827', cloak: '#374151', hair: '#f97316', belt: '#7f1d1d' }
+    };
+    if (p.classKey === 'blade') {
+      ctx.fillStyle = colors.blade.shadow;
+      ctx.fillRect(-5, 2, 10, 4);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(-4, -5, 8, 8);
+      ctx.fillStyle = colors.blade.trim;
+      ctx.fillRect(-3, -4, 6, 3);
+      ctx.fillStyle = colors.blade.accent;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(3, -2, 5, 2);
+      ctx.fillRect(4, -1, 2, 6);
+    } else if (p.classKey === 'arcanist') {
+      ctx.fillStyle = colors.arcanist.robeDark;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.arcanist.robe;
+      ctx.fillRect(-4, -5, 8, 7);
+      ctx.fillStyle = colors.arcanist.beard;
+      ctx.fillRect(-2, -1, 4, 3);
+      ctx.fillStyle = colors.arcanist.gem;
+      ctx.fillRect(3, -6, 2, 2);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(4, -5, 2, 10);
+    } else if (p.classKey === 'hunter') {
+      ctx.fillStyle = colors.hunter.cloak;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.hunter.hood;
+      ctx.fillRect(-4, -5, 8, 6);
+      ctx.fillStyle = colors.hunter.hair;
+      ctx.fillRect(-2, -3, 4, 2);
+      ctx.fillStyle = colors.hunter.belt;
+      ctx.fillRect(-3, 1, 6, 2);
+      ctx.fillStyle = '#a16207';
+      ctx.fillRect(4, -2, 3, 1);
+      ctx.fillRect(5, -3, 1, 4);
+    } else {
+      ctx.fillStyle = '#f87171';
+      ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
+    }
+  };
+
   const renderShop = () => {
     document.getElementById('shopGold').textContent = state.gold;
     const list = document.getElementById('shopList');
@@ -1303,7 +1497,6 @@ button:active { transform: translateY(1px); }
 
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
-    state.player.ranged = clsKey !== 'blade';
     state.running = true;
     state.paused = false;
     state.enemies.length = 0;
