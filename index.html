@@ -554,6 +554,7 @@ button:active { transform: translateY(1px); }
     spellWheel: { open: false, options: [] },
     minimapZoom: 20,
     debug: false,
+    activeZone: 0,
     shopType: 'general'
   };
 
@@ -584,19 +585,15 @@ button:active { transform: translateY(1px); }
     const inDoorY = Math.abs(ty - gateY) <= doorSpan;
     // Ice walls are continuous; only doors can open passages between zones.
     const flow = state.zoneFlow[`zone-${zone}`];
-    const forwardDoorTx = MAP - WALL_THICKNESS;
-    const backDoorTx = WALL_THICKNESS - 1;
-    const doorLocked = (doorTx, gateRef) => {
+    const doorLocked = (gateRef) => {
       if (!inDoorY) return null;
       if (tx < MAP - WALL_THICKNESS && tx > WALL_THICKNESS - 1) return null;
-      if (flow && gateRef && (tx >= MAP - WALL_THICKNESS || tx <= WALL_THICKNESS - 1)) {
-        return gateRef.locked ? 6 : 0;
-      }
+      if (flow && gateRef) return gateRef.locked ? 6 : 0;
       return 6;
     };
-    const forwardDoor = doorLocked(forwardDoorTx, flow ? flow.gate : null);
+    const forwardDoor = doorLocked(flow ? flow.gate : null);
     if (forwardDoor !== null) return forwardDoor;
-    const backDoor = doorLocked(backDoorTx, flow ? flow.backGate : null);
+    const backDoor = doorLocked(flow ? flow.backGate : null);
     if (backDoor !== null) return backDoor;
     if (tx < WALL_THICKNESS || tx >= MAP - WALL_THICKNESS) {
       return 6; // ice wall (solid)
@@ -942,6 +939,13 @@ button:active { transform: translateY(1px); }
     if (isHub) {
       state.interactables.push({ id: `rest-${zone}`, type: 'rest', x: zone * MAP * TILE + 18 * TILE, y: 24 * TILE });
     }
+  };
+
+  const syncBackGate = (zone) => {
+    const flow = state.zoneFlow[`zone-${zone}`];
+    if (!flow || !flow.backGate) return;
+    const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
+    if (prevFlow && !prevFlow.gate.locked) flow.backGate.locked = false;
   };
 
   const rollItem = (zoneIndex) => {
@@ -1610,7 +1614,12 @@ button:active { transform: translateY(1px); }
     const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
     state.time = ts;
     state.runTime += dt;
-    initZoneFlow(currentZone());
+    const zoneNow = currentZone();
+    initZoneFlow(zoneNow);
+    if (state.activeZone !== zoneNow) {
+      syncBackGate(zoneNow);
+      state.activeZone = zoneNow;
+    }
     updatePlayer(dt);
     updateEnemies(dt);
     updateCompanions(dt);
@@ -2049,6 +2058,7 @@ button:active { transform: translateY(1px); }
     state.running = true;
     state.paused = false;
     state.dead = false;
+    state.activeZone = 0;
     state.runTime = 0;
     state.stats = { kills: 0, loot: 0 };
     state.explored = {};
