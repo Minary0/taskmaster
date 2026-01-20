@@ -275,6 +275,8 @@ button:active { transform: translateY(1px); }
       <h2>GAME OVER</h2>
       <div class="small">Progression histoire: <strong id="gameOverProgress">0%</strong> <span id="gameOverProgressNote"></span></div>
       <div class="small" id="gameOverZone">Zone</div>
+      <div class="small" id="gameOverCause">Cause</div>
+      <div class="small" id="gameOverCheckpoint">Checkpoint</div>
       <div class="list" style="margin-top:10px;">
         <div class="item">Kills: <strong id="gameOverKills">0</strong></div>
         <div class="item">Loot ramassé: <strong id="gameOverLoot">0</strong></div>
@@ -555,7 +557,8 @@ button:active { transform: translateY(1px); }
     minimapZoom: 20,
     debug: false,
     activeZone: 0,
-    shopType: 'general'
+    shopType: 'general',
+    lastDamageSource: 'Inconnu'
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -681,6 +684,9 @@ button:active { transform: translateY(1px); }
     document.getElementById('gameOverProgress').textContent = `${progress}%`;
     document.getElementById('gameOverProgressNote').textContent = `(zones purifiées: ${state.clearedZones + 1}/${zones.length})`;
     document.getElementById('gameOverZone').textContent = `${acts[actIndex].name} — Zone ${zoneIndex + 1}/5`;
+    document.getElementById('gameOverCause').textContent = `Cause: ${state.lastDamageSource || 'Inconnu'}`;
+    const checkpoint = state.lastHubCheckpoint || state.lastCheckpoint;
+    document.getElementById('gameOverCheckpoint').textContent = checkpoint ? `Dernier checkpoint: Zone ${checkpoint.zone + 1}` : 'Dernier checkpoint: aucun';
     document.getElementById('gameOverKills').textContent = state.stats.kills;
     document.getElementById('gameOverLoot').textContent = state.stats.loot;
     document.getElementById('gameOverTime').textContent = formatTime(state.runTime);
@@ -1181,6 +1187,7 @@ button:active { transform: translateY(1px); }
         if (!isSolidAt(e.x, ny)) e.y = ny;
         if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
           const dmg = Math.max(1, e.atk - p.def);
+          state.lastDamageSource = `Ennemi (${e.type})`;
           p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
           if (p.hp <= 0) { handleDeath(); }
         }
@@ -1222,6 +1229,7 @@ button:active { transform: translateY(1px); }
     if (!isSolidAt(nx, b.y)) b.x = nx;
     if (!isSolidAt(b.x, ny)) b.y = ny;
     if (dist < 22 && p.iFrames <= 0) {
+      state.lastDamageSource = 'Boss';
       p.hp -= 12; p.iFrames = 0.8;
       if (p.hp <= 0) handleDeath();
     }
@@ -1247,6 +1255,7 @@ button:active { transform: translateY(1px); }
 
   const updateCompanions = (dt) => {
     const p = state.player;
+    if (state.dead) return;
     state.companions.forEach(c => {
       const dx = p.x - c.x;
       const dy = p.y - c.y;
@@ -1290,6 +1299,7 @@ button:active { transform: translateY(1px); }
   };
 
   const doAttack = () => {
+    if (state.dead) return;
     const p = state.player;
     if (p.attackCooldown > 0) return;
     p.attackCooldown = p.attackType === 'slashwave' ? 0.5 : 0.25;
@@ -1394,6 +1404,7 @@ button:active { transform: translateY(1px); }
   };
 
   const castSpell = (spell) => {
+    if (state.dead) return;
     const p = state.player;
     const cost = p.manaMax / 3;
     if (p.mana < cost) {
@@ -1521,6 +1532,7 @@ button:active { transform: translateY(1px); }
   };
 
   const onInteract = () => {
+    if (state.dead) return;
     const zone = currentZone();
     initZoneFlow(zone);
     const flow = state.zoneFlow[`zone-${zone}`];
@@ -1793,6 +1805,7 @@ button:active { transform: translateY(1px); }
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.minimapZoom) state.minimapZoom = 20;
     if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
+    if (!state.lastDamageSource) state.lastDamageSource = 'Inconnu';
     Object.values(state.zoneFlow || {}).forEach(flow => {
       if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
     });
@@ -2058,6 +2071,7 @@ button:active { transform: translateY(1px); }
     state.running = true;
     state.paused = false;
     state.dead = false;
+    state.lastDamageSource = 'Inconnu';
     state.activeZone = 0;
     state.runTime = 0;
     state.stats = { kills: 0, loot: 0 };
