@@ -1993,7 +1993,8 @@ button:active { transform: translateY(1px); }
       return;
     }
     const altar = nearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
-    if (!state.inHub && altar) {
+    const altarReady = altar || (flow.orbsDestroyed >= 3 && nearest(getActiveInteractables().filter(i => i.type === 'altar'), ALTAR_RANGE));
+    if (!state.inHub && altarReady) {
       if (zone % 5 === 4) {
         // FIX: boss spawns only once per zone until defeated.
         if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
@@ -2478,22 +2479,49 @@ button:active { transform: translateY(1px); }
   };
 
   const drawPlayerSprite = (p) => {
-    const radius = Math.max(5, p.size);
-    const fill = p.classKey === 'arcanist' ? '#60a5fa' : p.classKey === 'hunter' ? '#f59e0b' : '#e5e7eb';
+    // Sprite minimal “dark-fantasy” : corps + capuche + arme directionnelle
+    const bodyR = 6;
+    // Ombre
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, radius + 2, radius + 2, radius - 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 6, bodyR + 2, bodyR, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = fill;
+    // Corps
+    ctx.fillStyle = '#94a3b8';
     ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, bodyR, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    // Capuche
+    ctx.fillStyle = '#0f172a';
     ctx.beginPath();
-    ctx.arc(-radius / 3, -radius / 3, radius / 3, 0, Math.PI * 2);
+    ctx.arc(0, -2, bodyR - 1, Math.PI * 0.1, Math.PI * 1.9);
     ctx.fill();
+
+    // Visage (lueur)
+    ctx.fillStyle = '#eab308';
+    ctx.fillRect(-1, -4, 2, 2);
+
+    // Arme (selon weapon)
+    ctx.fillStyle = p.weapon === 'staff' ? '#a855f7' : p.weapon === 'bow' ? '#f59e0b' : '#93c5fd';
+    if (p.weapon === 'bow') {
+      ctx.fillRect(6, -1, 6, 2);
+      ctx.beginPath();
+      ctx.arc(12, 0, 3, -Math.PI / 2, Math.PI / 2);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.stroke();
+    } else if (p.weapon === 'staff') {
+      ctx.fillRect(6, -1, 7, 2);
+      ctx.beginPath();
+      ctx.arc(14, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // sword
+      ctx.fillRect(6, -1, 8, 2);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(12, -2, 4, 4);
+    }
   };
 
   const renderShop = () => {
