@@ -2262,42 +2262,15 @@ button:active { transform: translateY(1px); }
   };
 
   const saveGame = () => {
-    const replacer = (key, value) => {
-      if (value instanceof Set) return { __type: 'Set', value: Array.from(value) };
-      return value;
-    };
-    const payload = JSON.stringify(state, replacer);
-    localStorage.setItem(STORAGE_KEY, payload);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     showToast('Sauvegarde effectuée');
   };
 
   const loadGame = () => {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return false;
-
-    const reviver = (key, value) => {
-      if (value && value.__type === 'Set' && Array.isArray(value.value)) return new Set(value.value);
-      return value;
-    };
-
-    const loaded = JSON.parse(data, reviver);
-    Object.assign(state, loaded);
-
-    state.running = true;
-    state.paused = false;
-    state.dead = false;
-
-    // Re-sécurise quelques champs si manquants
-    if (!state.stats) state.stats = { kills: 0, loot: 0 };
-    if (!state.explored) state.explored = {};
-    if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
-    if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
-    if (!state.minimapZoom) state.minimapZoom = 20;
-    if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
-    if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
-    if (!state.lastDamageSource) state.lastDamageSource = 'Inconnu';
-
-    // Re-applique les paramètres de classe (au cas où)
+    Object.assign(state, JSON.parse(data));
+    state.running = true; state.paused = false; state.dead = false;
     if (state.player && state.player.classKey && classes[state.player.classKey]) {
       const base = classes[state.player.classKey];
       state.player.ranged = true;
@@ -2307,20 +2280,35 @@ button:active { transform: translateY(1px); }
       state.player.projectileSize = base.projectileSize;
       state.player.weapon = base.weapon;
     }
-
-    // ZoneFlow robustesse
+    if (!state.stats) state.stats = { kills: 0, loot: 0 };
+    if (!state.explored) state.explored = {};
+    if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
+    if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
+    if (!state.minimapZoom) state.minimapZoom = 20;
+    if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
+    if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
+    if (!state.lastDamageSource) state.lastDamageSource = 'Inconnu';
     Object.values(state.zoneFlow || {}).forEach(flow => {
       if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
-      if (flow.riftSpawned == null) flow.riftSpawned = false;
+      if (!flow.riftSpawned) flow.riftSpawned = false;
     });
-
+    if (state.boss) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) {
+        flow.bossState.spawned = true;
+        flow.bossState.alive = true;
+      }
+    }
     if (!state.worldNpcs || !state.worldNpcs.length) buildNpcInstances();
     state.npcs = state.worldNpcs;
     if (state.inHub && !state.hubMap) buildHubMap();
-
-    // Audio : initialise, mais ne force pas la lecture (autoplay)
     audio.init();
-
+    if (state.inHub) {
+      audio.ambientHub(state.hubActId || 0);
+    } else {
+      audio.ambient(currentZone());
+    }
     hideAll();
     return true;
   };
@@ -2482,512 +2470,398 @@ button:active { transform: translateY(1px); }
   };
 
   const drawPlayerSprite = (p) => {
-    // Sprite minimal “dark-fantasy” : corps + capuche + arme directionnelle
-    const bodyR = 6;
-    // Ombre
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(0, 6, bodyR + 2, bodyR, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Corps
-    ctx.fillStyle = '#94a3b8';
-    ctx.beginPath();
-    ctx.arc(0, 0, bodyR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Capuche
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.arc(0, -2, bodyR - 1, Math.PI * 0.1, Math.PI * 1.9);
-    ctx.fill();
-
-    // Visage (lueur)
-    ctx.fillStyle = '#eab308';
-    ctx.fillRect(-1, -4, 2, 2);
-
-    // Arme (selon weapon)
-    ctx.fillStyle = p.weapon === 'staff' ? '#a855f7' : p.weapon === 'bow' ? '#f59e0b' : '#93c5fd';
-    if (p.weapon === 'bow') {
-      ctx.fillRect(6, -1, 6, 2);
-      ctx.beginPath();
-      ctx.arc(12, 0, 3, -Math.PI / 2, Math.PI / 2);
-      ctx.strokeStyle = '#fbbf24';
-      ctx.stroke();
-    } else if (p.weapon === 'staff') {
-      ctx.fillRect(6, -1, 7, 2);
-      ctx.beginPath();
-      ctx.arc(14, 0, 3, 0, Math.PI * 2);
-      ctx.fill();
+    const colors = {
+      blade: { armor: '#e5e7eb', trim: '#60a5fa', accent: '#facc15', shadow: '#334155' },
+      arcanist: { robe: '#1e3a8a', robeDark: '#1e293b', beard: '#f8fafc', gem: '#38bdf8' },
+      hunter: { hood: '#111827', cloak: '#374151', hair: '#f97316', belt: '#7f1d1d' }
+    };
+    if (p.classKey === 'blade') {
+      ctx.fillStyle = colors.blade.shadow;
+      ctx.fillRect(-5, 2, 10, 4);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(-4, -5, 8, 8);
+      ctx.fillStyle = colors.blade.trim;
+      ctx.fillRect(-3, -4, 6, 3);
+      ctx.fillStyle = colors.blade.accent;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.fillStyle = colors.blade.armor;
+      ctx.fillRect(3, -2, 5, 2);
+      ctx.fillRect(4, -1, 2, 6);
+    } else if (p.classKey === 'arcanist') {
+      ctx.fillStyle = colors.arcanist.robeDark;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.arcanist.robe;
+      ctx.fillRect(-4, -5, 8, 7);
+      ctx.fillStyle = colors.arcanist.beard;
+      ctx.fillRect(-2, -1, 4, 3);
+      ctx.fillStyle = colors.arcanist.gem;
+      ctx.fillRect(3, -6, 2, 2);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(4, -5, 2, 10);
+    } else if (p.classKey === 'hunter') {
+      ctx.fillStyle = colors.hunter.cloak;
+      ctx.fillRect(-5, 1, 10, 5);
+      ctx.fillStyle = colors.hunter.hood;
+      ctx.fillRect(-4, -5, 8, 6);
+      ctx.fillStyle = colors.hunter.hair;
+      ctx.fillRect(-2, -3, 4, 2);
+      ctx.fillStyle = colors.hunter.belt;
+      ctx.fillRect(-3, 1, 6, 2);
+      ctx.fillStyle = '#a16207';
+      ctx.fillRect(4, -2, 3, 1);
+      ctx.fillRect(5, -3, 1, 4);
     } else {
-      // sword
-      ctx.fillRect(6, -1, 8, 2);
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillRect(12, -2, 4, 4);
+      ctx.fillStyle = '#f87171';
+      ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
     }
   };
 
   const renderShop = () => {
+    document.getElementById('shopGold').textContent = state.gold;
     const list = document.getElementById('shopList');
-    const goldEl = document.getElementById('shopGold');
     list.innerHTML = '';
-    goldEl.textContent = state.gold;
-
-    const mkRow = (label, price, onBuy) => {
-      const row = document.createElement('div');
-      row.className = 'item';
-      row.innerHTML = `<div><strong>${label}</strong> <span class="small">— ${price} or</span></div>`;
+    const stock = state.shopType === 'mana'
+      ? [{ name: 'Potion de Mana', type: 'mana_potion', price: 20 }]
+      : state.shopType === 'hp'
+        ? [{ name: 'Potion', type: 'potion', price: 15 }]
+        : state.shopType === 'equipment'
+          ? shopStock
+          : shopStock;
+    stock.forEach((s) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${s.name}</strong> <span class="small">${s.price} or</span>`;
       const btn = document.createElement('button');
       btn.textContent = 'Acheter';
       btn.addEventListener('click', () => {
-        if (state.gold < price) { showToast('Or insuffisant'); return; }
-        state.gold -= price;
-        onBuy();
-        goldEl.textContent = state.gold;
-        updateBars();
+        if (state.gold < s.price) return showToast('Or insuffisant');
+        state.gold -= s.price;
+        if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
+        if (s.type === 'mana_potion') addItem({ type: 'mana_potion', name: 'Potion de Mana' });
+        if (s.item) addItem({ ...s.item });
+        renderShop();
       });
-      row.appendChild(btn);
-      list.appendChild(row);
-    };
-
-    if (state.shopType === 'hp') {
-      mkRow('Potion', 15, () => addItem({ type: 'potion', name: 'Potion' }));
-    } else if (state.shopType === 'mana') {
-      mkRow('Potion de Mana', 18, () => addItem({ type: 'mana_potion', name: 'Potion de Mana' }));
-    } else if (state.shopType === 'equipment') {
-      mkRow('Objet aléatoire (rare)', 70, () => addItem({ ...rollItem(currentZone()), rarity: 'rare' }));
-      mkRow('Objet aléatoire (épique)', 120, () => addItem({ ...rollItem(currentZone()), rarity: 'epic' }));
-    } else {
-      shopStock.forEach(s => {
-        if (s.type === 'potion') mkRow(s.name, s.price, () => addItem({ type: 'potion', name: 'Potion' }));
-        else mkRow(s.name, s.price, () => addItem(s.item));
-      });
-    }
-  };
-
-  const applyStatPoint = (stat) => {
-    if (state.player.statPoints <= 0) return;
-    state.player.statPoints -= 1;
-    state.player.stats[stat] += 1;
-
-    // Effets simples
-    if (stat === 'str') state.player.atk += 1;
-    if (stat === 'agi') {
-      state.player.crit = clamp(state.player.crit + 0.005, 0, 0.5);
-      state.player.speed += 1;
-    }
-    if (stat === 'spi') {
-      state.player.manaMax += 6;
-      state.player.mana = state.player.manaMax;
-    }
-    if (stat === 'vit') {
-      state.player.hpMax += 8;
-      state.player.hp = state.player.hpMax;
-    }
-    showToast('Point attribué');
-    renderCharacter();
-    updateBars();
-  };
-
-  const useConsumable = (idx) => {
-    const it = state.player.inv[idx];
-    if (!it) return;
-    if (it.type === 'potion') {
-      state.player.hp = clamp(state.player.hp + 35, 0, state.player.hpMax);
-      state.player.inv.splice(idx, 1);
-      showToast('Potion utilisée');
-      audio.loot();
-    } else if (it.type === 'mana_potion') {
-      state.player.mana = clamp(state.player.mana + 40, 0, state.player.manaMax);
-      state.player.inv.splice(idx, 1);
-      showToast('Mana restauré');
-      audio.loot();
-    }
-    renderInventory();
-    updateBars();
-  };
-
-  const equipItem = (idx) => {
-    const it = state.player.inv[idx];
-    if (!it || it.type === 'potion' || it.type === 'mana_potion') return;
-
-    // Équipe dans le slot
-    const slot = it.slot;
-    if (!slot) return;
-
-    // Simple bonus : power influence atk/def
-    const power = it.power || 1;
-    const prev = state.player.equip[slot];
-    if (prev) {
-      // retire bonus approximatif
-      if (prev.slot === 'weapon') state.player.atk -= 2 + prev.power;
-      else state.player.def -= 1 + Math.floor(prev.power / 2);
-    }
-
-    state.player.equip[slot] = it;
-
-    if (slot === 'weapon') state.player.atk += 2 + power;
-    else state.player.def += 1 + Math.floor(power / 2);
-
-    showToast(`Équipé: ${it.name}`);
-    audio.loot();
-    renderInventory();
-    updateBars();
-  };
-
-  const bindInventoryClicks = () => {
-    const inv = document.getElementById('inventory');
-    inv.addEventListener('click', (e) => {
-      const cell = e.target.closest('.inv-cell');
-      if (cell && cell.dataset.equip != null) {
-        const idx = Number(cell.dataset.equip);
-        equipItem(idx);
-      }
-      const useBtn = e.target.closest('button[data-use]');
-      if (useBtn) {
-        useConsumable(Number(useBtn.dataset.use));
-      }
+      div.appendChild(btn);
+      list.appendChild(div);
     });
-
-    document.querySelectorAll('#inventory .tabs button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#inventory .tabs button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const tab = btn.dataset.tab;
-        document.getElementById('equipTab').classList.toggle('hidden', tab !== 'equip');
-        document.getElementById('consumablesTab').classList.toggle('hidden', tab !== 'consumables');
-        document.getElementById('alliesTab').classList.toggle('hidden', tab !== 'allies');
-        document.getElementById('questsTab').classList.toggle('hidden', tab !== 'quests');
+    if (state.player.inv.length) {
+      const header = document.createElement('div');
+      header.className = 'item';
+      header.innerHTML = '<strong>Vendre</strong>';
+      list.appendChild(header);
+      state.player.inv.forEach((it, idx) => {
+        if (it.type === 'potion' || it.type === 'mana_potion') return;
+        const sellPrice = 5 + (it.power || 1) * (it.rarity === 'legendary' ? 10 : it.rarity === 'epic' ? 6 : it.rarity === 'rare' ? 4 : 2);
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<strong>${it.name}</strong> <span class="small">${sellPrice} or</span>`;
+        const btn = document.createElement('button');
+        btn.textContent = 'Vendre';
+        btn.addEventListener('click', () => {
+          state.gold += sellPrice;
+          state.player.inv.splice(idx, 1);
+          renderShop();
+        });
+        div.appendChild(btn);
+        list.appendChild(div);
       });
-    });
+    }
   };
 
-  const bindJournalTabs = () => {
-    document.querySelectorAll('#journal .tabs button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#journal .tabs button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const tab = btn.dataset.tab;
-        document.getElementById('questTab').classList.toggle('hidden', tab !== 'quests');
-        document.getElementById('loreTab').classList.toggle('hidden', tab !== 'lore');
-      });
-    });
+  const applySettings = () => {
+    document.documentElement.style.fontSize = settings.textSize === 1 ? '16px' : settings.textSize === 2 ? '18px' : '14px';
+    document.getElementById('toggleShake').textContent = `Screen shake: ${settings.shake ? 'ON' : 'OFF'}`;
+    document.getElementById('toggleParticles').textContent = `Particles: ${settings.lowParticles ? 'LOW' : 'HIGH'}`;
+    document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
+    document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
+    document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
   };
 
   const loadSettings = () => {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return;
-    try {
-      const s = JSON.parse(raw);
-      Object.assign(settings, s);
-    } catch (_) {}
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) Object.assign(settings, JSON.parse(data));
+    applySettings();
   };
 
-  const saveSettings = () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  };
+  const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 
-  const refreshOptionButtons = () => {
-    const shakeBtn = document.getElementById('toggleShake');
-    const partBtn = document.getElementById('toggleParticles');
-    const muteBtn = document.getElementById('toggleMute');
-    const textBtn = document.getElementById('textSize');
-    shakeBtn.textContent = settings.shake ? 'Tremblements: ON' : 'Tremblements: OFF';
-    partBtn.textContent = settings.lowParticles ? 'Particules: LOW' : 'Particules: HIGH';
-    muteBtn.textContent = settings.mute ? 'Son: MUET' : 'Son: ON';
-    textBtn.textContent = settings.textSize === 0 ? 'Texte: PETIT' : settings.textSize === 1 ? 'Texte: NORMAL' : 'Texte: GRAND';
-
-    document.body.style.fontSize = settings.textSize === 0 ? '13px' : settings.textSize === 1 ? '14px' : '16px';
-  };
-
-  const unlockAudioOnce = () => {
-    audio.init();
-    if (audio.ctx && audio.ctx.state === 'suspended') {
-      audio.ctx.resume().catch(() => {});
-    }
-    // Démarre l'ambiance si jeu en cours
-    if (state.running) {
-      if (state.inHub) audio.ambientHub(state.hubActId || 0);
-      else audio.ambient(currentZone());
-    }
-  };
-
-  const startNewGame = (clsKey) => {
-    resetRun();
+  const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     state.running = true;
     state.paused = false;
     state.dead = false;
-    state.time = performance.now();
-    state.runTime = 0;
-
-    buildNpcInstances();
-    initZoneFlow(0);
+    state.lastDamageSource = 'Inconnu';
     state.activeZone = 0;
+    state.inHub = false;
+    state.hubActId = 0;
+    state.hubReturnPoint = null;
+    state.lastHubReturnPoint = null;
+    state.hubInteractables = [];
+    state.hubMap = null;
+    state.runTime = 0;
+    state.stats = { kills: 0, loot: 0 };
+    state.explored = {};
     state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: 0 };
-    state.lastHubCheckpoint = null;
-
+    state.enemies.length = 0;
+    state.companions.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
+    state.particles.length = 0;
+    state.drops.length = 0;
+    state.interactables.length = 0;
+    state.zoneFlow = {};
+    state.zoneCorruption = Array(25).fill(1);
+    state.clearedZones = 0;
+    state.materials = 0;
+    state.gold = 0;
+    state.corruptionAbsorbed = 0;
+    state.quests = {};
+    quests.forEach(q => state.quests[q.id] = { done: false });
+    lore.forEach((_, i) => state.loreFound[i] = false);
+    buildNpcInstances();
+    state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
     hideAll();
-    updateBars();
-    updateMini();
-
-    // Audio ne part qu'après interaction utilisateur (autoplay)
-    showToast('Clique / touche une touche pour activer le son');
-    requestAnimationFrame(update);
+    audio.init();
+    audio.ambient(currentZone());
+    showToast('Le serment s\'éveille...');
   };
 
-  const resizeCanvas = () => {
-    // garde le canvas logique W x H, mais ajuste le CSS pour fitter l’écran
-    const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
-    canvas.style.width = `${Math.floor(W * scale)}px`;
-    canvas.style.height = `${Math.floor(H * scale)}px`;
+  const setTabs = (root, tabs) => {
+    root.querySelectorAll('button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        root.querySelectorAll('button[data-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        tabs.forEach(t => document.getElementById(t).classList.add('hidden'));
+        document.getElementById(btn.dataset.tab + 'Tab').classList.remove('hidden');
+      });
+    });
   };
 
-  const updateMouseFromEvent = (ev) => {
+  document.getElementById('newBtn').addEventListener('click', () => openPanel('classMenu'));
+  document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
+  document.getElementById('guideBtn').addEventListener('click', () => openPanel('guide', false));
+  document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
+  document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('optBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('guideClose').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
+  document.getElementById('shopClose').addEventListener('click', closeOverlay);
+  document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
+  document.getElementById('saveBtn').addEventListener('click', saveGame);
+  document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
+  document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
+  const restartAct = () => {
+    const actStart = Math.floor(currentZone() / 5) * 5;
+    state.running = true;
+    state.dead = false;
+    state.paused = false;
+    state.player.hp = state.player.hpMax;
+    state.player.mana = state.player.manaMax;
+    state.player.x = actStart * MAP * TILE + 30 * TILE;
+    state.player.y = 30 * TILE;
+    state.enemies.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
+    state.drops.length = 0;
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    if (actStart % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    hideAll();
+  };
+
+  document.getElementById('gameOverRestart').addEventListener('click', () => restartAct());
+  document.getElementById('gameOverContinue').addEventListener('click', () => continueFromCheckpoint());
+  document.getElementById('gameOverMenu').addEventListener('click', () => { state.paused = false; state.running = false; state.dead = false; openPanel('menu'); });
+
+  document.getElementById('toggleShake').addEventListener('click', () => { settings.shake = !settings.shake; applySettings(); saveSettings(); });
+  document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
+  document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
+  document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
+  document.getElementById('musicVolume').addEventListener('input', (e) => {
+    settings.volume = clamp(Number(e.target.value) / 100, 0, 1);
+    applySettings();
+    saveSettings();
+  });
+
+  document.getElementById('equipTab').addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-equip]');
+    if (cell) {
+      const idx = Number(cell.dataset.equip);
+      const item = state.player.inv.splice(idx, 1)[0];
+      if (item) state.player.equip[item.slot] = item;
+      renderInventory();
+    }
+  });
+  document.getElementById('consumablesTab').addEventListener('click', (e) => {
+    if (e.target.matches('button[data-use]')) {
+      const idx = Number(e.target.dataset.use);
+      const item = state.player.inv[idx];
+      if (item && item.type === 'potion') {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+        renderInventory();
+      } else if (item && item.type === 'mana_potion') {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
+        renderInventory();
+      }
+    }
+  });
+
+  document.getElementById('pointsPanel').addEventListener('click', (e) => {
+    if (!e.target.matches('button[data-stat]')) return;
+    if (state.player.statPoints <= 0) return;
+    const stat = e.target.dataset.stat;
+    state.player.stats[stat] += 1; state.player.statPoints -= 1;
+    renderCharacter();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (state.dead) return;
+    if (e.key === 'Escape' && state.spellWheel.open) {
+      closeSpellWheel();
+      return;
+    }
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
+    if (e.key === ' ') keys.attack = true;
+    if (e.key.toLowerCase() === 'e') keys.interact = true;
+    if (e.key === 'Shift') keys.dash = true;
+    if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
+    if (e.key === 'c') { openPanel('character'); renderCharacter(); }
+    if (e.key === 'q') { openPanel('journal'); renderJournal(); }
+    if (e.key.toLowerCase() === 'r') openSpellWheel();
+    if (e.key === '+' || e.key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
+    if (e.key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
+    if (e.key.toLowerCase() === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
+    if (e.key.toLowerCase() === 'h') {
+      const idx = state.player.inv.findIndex(it => it.type === 'potion');
+      if (idx >= 0) {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+      }
+    }
+    if (e.key.toLowerCase() === 'm') {
+      const idx = state.player.inv.findIndex(it => it.type === 'mana_potion');
+      if (idx >= 0) {
+        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Mana restauré');
+      }
+    }
+    if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = false;
+    if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
+    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
+    if (e.key === ' ') keys.attack = false;
+    if (e.key.toLowerCase() === 'e') keys.interact = false;
+    if (e.key === 'Shift') keys.dash = false;
+  });
+
+  window.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const sx = (ev.clientX - rect.left) / rect.width;
-    const sy = (ev.clientY - rect.top) / rect.height;
-    state.mouse.x = clamp(sx * W, 0, W);
-    state.mouse.y = clamp(sy * H, 0, H);
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  window.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
+  canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); openSpellWheel(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
+  window.addEventListener('blur', () => state.paused = true);
+
+  setInterval(() => {
+    if (!state.running || state.dead) return;
+    if (keys.attack) doAttack();
+    if (keys.interact) onInteract();
+    if (keys.dash) keys.dash = false;
+  }, 200);
+
+  const joy = document.getElementById('joy');
+  const joyDot = document.getElementById('joyDot');
+  const setJoy = (clientX, clientY) => {
+    const rect = joy.getBoundingClientRect();
+    const dx = clientX - (rect.left + rect.width / 2);
+    const dy = clientY - (rect.top + rect.height / 2);
+    const dist = Math.min(Math.hypot(dx, dy), rect.width / 2 - 6);
+    const ang = Math.atan2(dy, dx);
+    joyVec.x = Math.cos(ang) * (dist / (rect.width / 2));
+    joyVec.y = Math.sin(ang) * (dist / (rect.height / 2));
+    joyDot.style.left = `${rect.width / 2 + joyVec.x * 40 - 18}px`;
+    joyDot.style.top = `${rect.height / 2 + joyVec.y * 40 - 18}px`;
   };
+  joy.addEventListener('pointerdown', (e) => { joyActive = true; setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointermove', (e) => { if (joyActive) setJoy(e.clientX, e.clientY); });
+  joy.addEventListener('pointerup', () => { joyActive = false; joyVec.x = 0; joyVec.y = 0; joyDot.style.left = '42px'; joyDot.style.top = '42px'; });
 
-  const bindInputs = () => {
-    window.addEventListener('resize', resizeCanvas);
-
-    // Anti context menu (clic droit)
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // Pointer (souris + tactile)
-    canvas.addEventListener('pointermove', (e) => updateMouseFromEvent(e));
-    canvas.addEventListener('pointerdown', (e) => {
-      unlockAudioOnce();
-      updateMouseFromEvent(e);
-      if (!state.running) return;
-      if (e.button === 2) {
-        openSpellWheel();
-      } else {
-        keys.attack = true;
-        doAttack();
-      }
+  document.querySelectorAll('.mobBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.act;
+      if (state.dead) return;
+      if (action === 'attack') doAttack();
+      if (action === 'interact') onInteract();
+      if (action === 'inventory') { openPanel('inventory'); renderInventory(); }
+      if (action === 'pause') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
     });
-    window.addEventListener('pointerup', () => { keys.attack = false; });
+  });
 
-    // Clavier
-    window.addEventListener('keydown', (e) => {
-      unlockAudioOnce();
-      const k = e.key.toLowerCase();
-      if (k === 'arrowup' || k === 'z' || k === 'w') keys.up = true;
-      if (k === 'arrowdown' || k === 's') keys.down = true;
-      if (k === 'arrowleft' || k === 'q' || k === 'a') keys.left = true;
-      if (k === 'arrowright' || k === 'd') keys.right = true;
-      if (k === 'shift') keys.dash = true;
-      if (k === 'e') { keys.interact = true; onInteract(); }
-      if (k === 'i') { if (state.running) { renderInventory(); openPanel('inventory'); } }
-      if (k === 'c') { if (state.running) { renderCharacter(); openPanel('character'); } }
-      if (k === 'q') { if (state.running) { renderJournal(); openPanel('journal'); } }
-      if (k === 'escape') {
-        if (!state.running) return;
-        if (state.spellWheel.open) closeSpellWheel();
-        else if (state.paused && document.getElementById('pauseMenu').style.display === 'flex') closeOverlay();
-        else openPanel('pauseMenu');
-      }
-      if (k === 'r') { if (state.running && !state.spellWheel.open) openSpellWheel(); }
-    });
+  const spellWheel = document.getElementById('spell-wheel');
+  spellWheel.addEventListener('click', (e) => {
+    if (!state.spellWheel.open) return;
+    const slot = e.target.closest('.slot');
+    if (slot) {
+      const idx = Number(slot.dataset.slot);
+      const spell = state.spellWheel.options[idx];
+      if (spell) castSpell(spell);
+    }
+    closeSpellWheel();
+  });
 
-    window.addEventListener('keyup', (e) => {
-      const k = e.key.toLowerCase();
-      if (k === 'arrowup' || k === 'z' || k === 'w') keys.up = false;
-      if (k === 'arrowdown' || k === 's') keys.down = false;
-      if (k === 'arrowleft' || k === 'q' || k === 'a') keys.left = false;
-      if (k === 'arrowright' || k === 'd') keys.right = false;
-      if (k === 'shift') keys.dash = false;
-      if (k === 'e') keys.interact = false;
-    });
-
-    // Spell wheel clicks
-    document.querySelectorAll('#spell-wheel .slot').forEach((slotEl) => {
-      slotEl.addEventListener('click', () => {
-        const idx = Number(slotEl.dataset.slot);
-        const pick = state.spellWheel.options[idx];
-        if (pick) castSpell(pick);
-        closeSpellWheel();
-      });
-    });
-    document.getElementById('spell-wheel').addEventListener('click', (e) => {
-      if (e.target.id === 'spell-wheel') closeSpellWheel();
-    });
-
-    // Mobile joystick
-    const joy = document.getElementById('joy');
-    const dot = document.getElementById('joyDot');
-
-    const joyMove = (clientX, clientY) => {
-      const r = joy.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const dx = clientX - cx;
-      const dy = clientY - cy;
-      const max = r.width * 0.35;
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = clamp(dx / len, -1, 1) * Math.min(max, len);
-      const ny = clamp(dy / len, -1, 1) * Math.min(max, len);
-      dot.style.left = `${42 + nx}px`;
-      dot.style.top = `${42 + ny}px`;
-      joyVec.x = nx / max;
-      joyVec.y = ny / max;
-    };
-
-    joy.addEventListener('pointerdown', (e) => {
-      unlockAudioOnce();
-      joyActive = true;
-      joy.setPointerCapture(e.pointerId);
-      joyMove(e.clientX, e.clientY);
-    });
-    joy.addEventListener('pointermove', (e) => {
-      if (!joyActive) return;
-      joyMove(e.clientX, e.clientY);
-    });
-    joy.addEventListener('pointerup', () => {
-      joyActive = false;
-      joyVec.x = 0; joyVec.y = 0;
-      dot.style.left = `42px`;
-      dot.style.top = `42px`;
-    });
-
-    // Mobile buttons
-    document.querySelectorAll('.mobBtn').forEach(btn => {
-      btn.addEventListener('pointerdown', () => {
-        unlockAudioOnce();
-        const act = btn.dataset.act;
-        if (!state.running) return;
-        if (act === 'attack') doAttack();
-        if (act === 'interact') onInteract();
-        if (act === 'inventory') { renderInventory(); openPanel('inventory'); }
-        if (act === 'pause') openPanel('pauseMenu');
-      });
-    });
+  const resize = () => {
+    const { innerWidth: iw, innerHeight: ih } = window;
+    const ratio = 16 / 9;
+    let w = iw; let h = iw / ratio;
+    if (h > ih) { h = ih; w = ih * ratio; }
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
   };
+  window.addEventListener('resize', resize);
 
-  const bindUI = () => {
-    // Menu principal
-    document.getElementById('newBtn').addEventListener('click', () => {
-      audio.menu(); unlockAudioOnce();
-      // build class list
-      const list = document.getElementById('classList');
-      list.innerHTML = '';
-      Object.entries(classes).forEach(([key, cls]) => {
-        const card = document.createElement('div');
-        card.className = 'item';
-        card.style.width = '240px';
-        card.innerHTML = `
-          <div><strong>${cls.name}</strong></div>
-          <div class="small">PV ${cls.hp} · END ${cls.stam} · Mana ${cls.mana}</div>
-          <div class="small">ATK ${cls.atk} · DEF ${cls.def} · Crit ${(cls.crit * 100).toFixed(0)}%</div>
-          <div class="small">Skill: ${cls.skill}</div>
-        `;
-        const btn = document.createElement('button');
-        btn.textContent = 'Choisir';
-        btn.addEventListener('click', () => startNewGame(key));
-        card.appendChild(btn);
-        list.appendChild(card);
-      });
-      openPanel('classMenu', true);
-    });
+  const classList = document.getElementById('classList');
+  Object.entries(classes).forEach(([key, c]) => {
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.innerHTML = `<strong>${c.name}</strong><div>${c.skill}</div><div class="small">PV ${c.hp} · Mana ${c.mana} · ATK ${c.atk}</div><button>Choisir</button>`;
+    card.querySelector('button').addEventListener('click', () => startGame(key));
+    classList.appendChild(card);
+  });
 
-    document.getElementById('contBtn').addEventListener('click', () => {
-      audio.menu(); unlockAudioOnce();
-      const ok = loadGame();
-      if (!ok) { showToast('Aucune sauvegarde'); return; }
-      state.time = performance.now();
-      hideAll();
-      updateBars();
-      updateMini();
-      requestAnimationFrame(update);
-      showToast('Partie chargée');
-    });
+  setTabs(document.getElementById('inventory'), ['equipTab', 'consumablesTab', 'alliesTab', 'questsTab']);
+  setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
 
-    document.getElementById('guideBtn').addEventListener('click', () => { audio.menu(); openPanel('guide'); });
-    document.getElementById('optBtn').addEventListener('click', () => { audio.menu(); refreshOptionButtons(); openPanel('options'); });
-    document.getElementById('creditsBtn').addEventListener('click', () => { audio.menu(); openPanel('credits'); });
-
-    document.getElementById('guideClose').addEventListener('click', () => { audio.menu(); openPanel('menu', true); document.getElementById('menu').style.display='flex'; });
-    document.getElementById('creditsBack').addEventListener('click', () => { audio.menu(); openPanel('menu', true); document.getElementById('menu').style.display='flex'; });
-
-    // Pause
-    document.getElementById('resumeBtn').addEventListener('click', () => { audio.menu(); closeOverlay(); });
-    document.getElementById('saveBtn').addEventListener('click', () => { audio.menu(); saveGame(); });
-    document.getElementById('pauseOptBtn').addEventListener('click', () => { audio.menu(); refreshOptionButtons(); openPanel('options'); });
-    document.getElementById('quitBtn').addEventListener('click', () => { audio.menu(); resetRun(); });
-
-    // Dialogue & shop close
-    document.getElementById('dialogueClose').addEventListener('click', () => closeOverlay());
-    document.getElementById('shopClose').addEventListener('click', () => closeOverlay());
-
-    // Options
-    const vol = document.getElementById('musicVolume');
-    vol.addEventListener('input', () => {
-      settings.volume = clamp(Number(vol.value) / 100, 0, 1);
-      saveSettings();
-    });
-
-    document.getElementById('toggleShake').addEventListener('click', () => {
-      settings.shake = !settings.shake; saveSettings(); refreshOptionButtons(); audio.menu();
-    });
-    document.getElementById('toggleParticles').addEventListener('click', () => {
-      settings.lowParticles = !settings.lowParticles; saveSettings(); refreshOptionButtons(); audio.menu();
-    });
-    document.getElementById('toggleMute').addEventListener('click', () => {
-      settings.mute = !settings.mute; saveSettings(); refreshOptionButtons(); audio.menu();
-      if (settings.mute) audio.stopMusic();
-      else unlockAudioOnce();
-    });
-    document.getElementById('textSize').addEventListener('click', () => {
-      settings.textSize = (settings.textSize + 1) % 3; saveSettings(); refreshOptionButtons(); audio.menu();
-    });
-
-    document.getElementById('optBack').addEventListener('click', () => {
-      audio.menu();
-      // Retour pause si running et paused, sinon menu
-      if (state.running) openPanel('pauseMenu');
-      else { openPanel('menu', true); document.getElementById('menu').style.display='flex'; }
-    });
-
-    // Character stat points
-    document.getElementById('pointsPanel').addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-stat]');
-      if (!btn) return;
-      applyStatPoint(btn.dataset.stat);
-    });
-
-    // GameOver
-    document.getElementById('gameOverRestart').addEventListener('click', () => {
-      audio.menu();
-      // “Recommencer l’ACT” : renvoie au sanctuaire de l’acte courant
-      const zone = currentZone();
-      const actIndex = Math.floor(zone / 5);
-      enterSanctuary(actIndex, { zoneId: actIndex * 5, x: 30 * TILE, y: 30 * TILE });
-      state.dead = false;
-      state.paused = false;
-      hideAll();
-    });
-    document.getElementById('gameOverContinue').addEventListener('click', () => { audio.menu(); continueFromCheckpoint(); });
-    document.getElementById('gameOverMenu').addEventListener('click', () => { audio.menu(); resetRun(); });
-
-    // Click sur overlay pour fermer (inventaire, perso, journal) via ESC seulement : on garde comportement actuel
-  };
-
-  // --- Boot ---
   loadSettings();
-  document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
-  refreshOptionButtons();
-  resizeCanvas();
-  bindUI();
-  bindInputs();
-  bindInventoryClicks();
-  bindJournalTabs();
+  resize();
+  openPanel('menu', false);
+  requestAnimationFrame(update);
 
-  // Affiche menu
-  document.getElementById('menu').style.display = 'flex';
+  // PokiSDK hooks (optional)
+  window.gameplayStart = window.gameplayStart || function () {};
+  window.gameplayStop = window.gameplayStop || function () {};
+  window.requestCommercialBreak = window.requestCommercialBreak || function () {};
+  window.requestRewardedBreak = window.requestRewardedBreak || function () {};
 })();
 </script>
 </body>
