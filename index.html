@@ -1993,14 +1993,22 @@ button:active { transform: translateY(1px); }
       return;
     }
     const altar = nearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
-    if (!state.inHub && zone % 5 === 4 && altar) {
-      // FIX: boss spawns only once per zone until defeated.
-      if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
-        state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
-        flow.bossState.spawned = true;
-        flow.bossState.alive = true;
-        audio.menu();
-        showToast('Le Seigneur émerge...');
+    if (!state.inHub && altar) {
+      if (zone % 5 === 4) {
+        // FIX: boss spawns only once per zone until defeated.
+        if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
+          state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
+          flow.bossState.spawned = true;
+          flow.bossState.alive = true;
+          audio.menu();
+          showToast('Le Seigneur émerge...');
+        }
+      } else if (flow.gate.locked) {
+        flow.keyDropped = true;
+        flow.gate.locked = false;
+        const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
+        if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
+        showToast('La porte s\'ouvre.');
       }
       return;
     }
@@ -2470,50 +2478,22 @@ button:active { transform: translateY(1px); }
   };
 
   const drawPlayerSprite = (p) => {
-    const colors = {
-      blade: { armor: '#e5e7eb', trim: '#60a5fa', accent: '#facc15', shadow: '#334155' },
-      arcanist: { robe: '#1e3a8a', robeDark: '#1e293b', beard: '#f8fafc', gem: '#38bdf8' },
-      hunter: { hood: '#111827', cloak: '#374151', hair: '#f97316', belt: '#7f1d1d' }
-    };
-    if (p.classKey === 'blade') {
-      ctx.fillStyle = colors.blade.shadow;
-      ctx.fillRect(-5, 2, 10, 4);
-      ctx.fillStyle = colors.blade.armor;
-      ctx.fillRect(-4, -5, 8, 8);
-      ctx.fillStyle = colors.blade.trim;
-      ctx.fillRect(-3, -4, 6, 3);
-      ctx.fillStyle = colors.blade.accent;
-      ctx.fillRect(-1, -1, 2, 2);
-      ctx.fillStyle = colors.blade.armor;
-      ctx.fillRect(3, -2, 5, 2);
-      ctx.fillRect(4, -1, 2, 6);
-    } else if (p.classKey === 'arcanist') {
-      ctx.fillStyle = colors.arcanist.robeDark;
-      ctx.fillRect(-5, 1, 10, 5);
-      ctx.fillStyle = colors.arcanist.robe;
-      ctx.fillRect(-4, -5, 8, 7);
-      ctx.fillStyle = colors.arcanist.beard;
-      ctx.fillRect(-2, -1, 4, 3);
-      ctx.fillStyle = colors.arcanist.gem;
-      ctx.fillRect(3, -6, 2, 2);
-      ctx.fillStyle = '#8b5a2b';
-      ctx.fillRect(4, -5, 2, 10);
-    } else if (p.classKey === 'hunter') {
-      ctx.fillStyle = colors.hunter.cloak;
-      ctx.fillRect(-5, 1, 10, 5);
-      ctx.fillStyle = colors.hunter.hood;
-      ctx.fillRect(-4, -5, 8, 6);
-      ctx.fillStyle = colors.hunter.hair;
-      ctx.fillRect(-2, -3, 4, 2);
-      ctx.fillStyle = colors.hunter.belt;
-      ctx.fillRect(-3, 1, 6, 2);
-      ctx.fillStyle = '#a16207';
-      ctx.fillRect(4, -2, 3, 1);
-      ctx.fillRect(5, -3, 1, 4);
-    } else {
-      ctx.fillStyle = '#f87171';
-      ctx.fillRect(-p.size, -p.size, p.size * 2, p.size * 2);
-    }
+    const radius = Math.max(5, p.size);
+    const fill = p.classKey === 'arcanist' ? '#60a5fa' : p.classKey === 'hunter' ? '#f59e0b' : '#e5e7eb';
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(0, radius + 2, radius + 2, radius - 1, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(-radius / 3, -radius / 3, radius / 3, 0, Math.PI * 2);
+    ctx.fill();
   };
 
   const renderShop = () => {
