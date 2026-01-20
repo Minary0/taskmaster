@@ -337,9 +337,12 @@ button:active { transform: translateY(1px); }
   const TILE = 16;
   const MAP = 64;
   const WALL_THICKNESS = 3;
-  const INTERACT_RANGE = 72;
-  const NPC_INTERACT_RANGE = 84;
-  const PICKUP_RANGE = 60;
+  const DROP_PICKUP_RANGE = 120;
+  const NPC_RANGE = 130;
+  const ORB_RANGE = 120;
+  const GATE_RANGE = 120;
+  const ALTAR_RANGE = 120;
+  const REST_RANGE = 120;
   const PLAYER_RADIUS = 6;
 
   const settings = {
@@ -1126,14 +1129,22 @@ button:active { transform: translateY(1px); }
     state.interactables.forEach(it => {
       if (it.type === 'orb' && !it.active) return;
       if (it.type === 'altar' && !it.active) return;
-      targets.push({ x: it.x, y: it.y, type: it.type });
+      if (it.type === 'gate' || it.type === 'rest' || it.type === 'altar' || it.type === 'orb') {
+        targets.push({ x: it.x, y: it.y, type: it.type });
+      }
     });
     state.drops.forEach(d => targets.push({ x: d.x, y: d.y, type: 'drop' }));
-    state.npcs.forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc' }));
+    state.npcs.forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc', role: npc.role }));
     return targets.filter(t => {
       const dx = t.x - state.player.x;
       const dy = t.y - state.player.y;
-      return dx * dx + dy * dy < INTERACT_RANGE * INTERACT_RANGE;
+      const range = t.type === 'drop' ? DROP_PICKUP_RANGE
+        : t.type === 'gate' ? GATE_RANGE
+          : t.type === 'orb' ? ORB_RANGE
+            : t.type === 'altar' ? ALTAR_RANGE
+              : t.type === 'rest' ? REST_RANGE
+                : NPC_RANGE;
+      return dx * dx + dy * dy < range * range;
     });
   };
 
@@ -1534,7 +1545,7 @@ button:active { transform: translateY(1px); }
       d.bob += dt * 4;
       const dx = d.x - state.player.x;
       const dy = d.y - state.player.y;
-      if (dx * dx + dy * dy < PICKUP_RANGE * PICKUP_RANGE) {
+      if (dx * dx + dy * dy < DROP_PICKUP_RANGE * DROP_PICKUP_RANGE) {
         addItem(d.item);
         state.drops.splice(i, 1);
       }
@@ -1558,7 +1569,39 @@ button:active { transform: translateY(1px); }
     const zone = currentZone();
     initZoneFlow(zone);
     const flow = state.zoneFlow[`zone-${zone}`];
-    const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.hypot(i.x - state.player.x, i.y - state.player.y) < INTERACT_RANGE);
+    const nearest = (items, range) => {
+      let best = null;
+      let bestDist = Infinity;
+      items.forEach(item => {
+        const dx = item.x - state.player.x;
+        const dy = item.y - state.player.y;
+        const dist = dx * dx + dy * dy;
+        if (dist < range * range && dist < bestDist) {
+          best = item;
+          bestDist = dist;
+        }
+      });
+      return best;
+    };
+    const drop = nearest(state.drops, DROP_PICKUP_RANGE);
+    if (drop) {
+      addItem(drop.item);
+      state.drops = state.drops.filter(d => d !== drop);
+      return;
+    }
+    const gate = nearest(state.interactables.filter(i => i.type === 'gate'), GATE_RANGE);
+    if (gate) {
+      if (gate.direction === 'forward' && flow.keyDropped && flow.gate.locked) {
+        flow.gate.locked = false;
+        const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
+        if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
+        showToast('La porte s\'ouvre.');
+      } else if (!flow.gate.locked || gate.direction === 'back') {
+        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
+      }
+      return;
+    }
+    const orb = nearest(state.interactables.filter(i => i.type === 'orb' && i.active), ORB_RANGE);
     if (orb) {
       orb.active = false;
       flow.orbsDestroyed += 1;
@@ -1571,7 +1614,8 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    if (!flow.isHub && zone % 5 === 4 && flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE) {
+    const altar = nearest(state.interactables.filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
+    if (!flow.isHub && zone % 5 === 4 && altar) {
       // FIX: boss spawns only once per zone until defeated.
       if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
         state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
@@ -1582,35 +1626,14 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
-      flow.gate.locked = false;
-      const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
-      if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
-      showToast('La porte s\'ouvre.');
+    const rest = nearest(state.interactables.filter(i => i.type === 'rest'), REST_RANGE);
+    if (flow.isHub && rest) {
+      state.player.hp = state.player.hpMax;
+      state.player.mana = state.player.manaMax;
+      showToast('Repos accordé.');
       return;
     }
-    if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
-      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
-      return;
-    }
-    if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
-      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
-      return;
-    }
-    if (flow.isHub) {
-      const rest = state.interactables.find(i => i.type === 'rest' && Math.hypot(i.x - state.player.x, i.y - state.player.y) < INTERACT_RANGE);
-      if (rest) {
-        state.player.hp = state.player.hpMax;
-        state.player.mana = state.player.manaMax;
-        showToast('Repos accordé.');
-        return;
-      }
-    }
-    const nearNpc = state.npcs.find(npc => {
-      const dx = npc.x - state.player.x;
-      const dy = npc.y - state.player.y;
-      return dx * dx + dy * dy < NPC_INTERACT_RANGE * NPC_INTERACT_RANGE;
-    });
+    const nearNpc = nearest(state.npcs, NPC_RANGE);
     if (nearNpc) {
       if (nearNpc.role.toLowerCase().includes('marchand')) {
         state.shopType = nearNpc.role.toLowerCase().includes('mana') ? 'mana' : nearNpc.role.toLowerCase().includes('hp') ? 'hp' : nearNpc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
@@ -1726,13 +1749,26 @@ button:active { transform: translateY(1px); }
     getInteractableTargets().forEach(t => {
       const sx = t.x - camX;
       const sy = t.y - camY;
-      ctx.strokeStyle = t.type === 'gate' ? '#38bdf8' : '#facc15';
+      const label = t.type === 'gate' ? 'Porte'
+        : t.type === 'orb' ? 'Noyau'
+          : t.type === 'altar' ? 'Autel'
+            : t.type === 'npc' ? (t.role && t.role.toLowerCase().includes('marchand') ? 'Marchand' : 'PNJ')
+              : t.type === 'rest' ? 'Repos'
+                : 'Potion';
+      ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
+        : t.type === 'orb' ? '#a855f7'
+          : t.type === 'altar' ? '#f59e0b'
+            : t.type === 'npc' ? '#22c55e'
+              : t.type === 'rest' ? '#22c55e'
+                : '#facc15';
       ctx.beginPath();
       ctx.arc(sx, sy, 10, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '10px Cinzel, serif';
       ctx.fillText('E', sx + 6, sy - 6);
+      ctx.fillStyle = '#cbd5f5';
+      ctx.fillText(label, sx + 12, sy + 12);
     });
     state.drops.forEach(d => {
       const bob = Math.sin(d.bob) * 3;
