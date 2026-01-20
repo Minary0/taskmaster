@@ -51,6 +51,10 @@ button { background: linear-gradient(to bottom, #3a3a4a, #2a2a3a); border: 1px s
 button:hover { border-color: var(--accent); color: var(--accent); background: #333; }
 button:active { transform: translateY(1px); }
 .hidden { display: none !important; }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.preview-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.preview-box { width: 18px; height: 18px; border: 1px solid #2c2c3c; background: #111827; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+.preview-ring { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #2c2c3c; background: #111827; }
 
 #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 #hud .panel { pointer-events: auto; }
@@ -124,6 +128,7 @@ button:active { transform: translateY(1px); }
       <p>RPG dark-fantasy jouable en navigateur, hors-ligne.</p>
       <button id="newBtn">Nouvelle partie</button>
       <button id="contBtn">Continuer</button>
+      <button id="guideBtn">Guide</button>
       <button id="optBtn">Options</button>
       <button id="creditsBtn">Crédits</button>
       <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · C: perso · Q: quêtes · ESC: pause</div>
@@ -214,6 +219,45 @@ button:active { transform: translateY(1px); }
       <button id="toggleMute"></button>
       <button id="textSize"></button>
       <button id="optBack">Retour</button>
+    </div>
+  </div>
+
+  <div id="guide" class="overlay">
+    <div class="panel">
+      <h2>Guide du Marqué</h2>
+      <div class="guide-grid">
+        <div>
+          <h3>Lore</h3>
+          <p>Vous êtes un Marqué. Chaque ACT purifie un fragment de la Brume-Couronne. Traversez les 5 zones, trouvez le hub en Z3 pour vous préparer, puis défiez le seigneur en Z5.</p>
+        </div>
+        <div>
+          <h3>Contrôles</h3>
+          <div class="small">ZQSD / Flèches : bouger</div>
+          <div class="small">Souris : attaquer</div>
+          <div class="small">E : interagir</div>
+          <div class="small">R / clic droit : roue de sorts</div>
+          <div class="small">I : inventaire · C : perso · Q : quêtes</div>
+        </div>
+        <div>
+          <h3>Sorts (aperçu)</h3>
+          <div class="preview-row"><span class="preview-ring" style="background:#60a5fa;"></span> Bolt (projectile)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#a855f7;"></span> Nova (AOE)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#38bdf8;"></span> Ice Spike (ralentit)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#f97316;"></span> Fireball (explosion)</div>
+          <div class="preview-row"><span class="preview-ring" style="background:#22c55e;"></span> Shield / Summon</div>
+        </div>
+        <div>
+          <h3>Ennemis (aperçu)</h3>
+          <div class="preview-row"><span class="preview-box" style="background:#16a34a;"></span> Mêlée (dash)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#ef4444;"></span> Sniper (tir)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#6b7280;"></span> Tank (lent)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#a855f7;"></span> Caster (AOE)</div>
+          <div class="preview-row"><span class="preview-box" style="background:#38bdf8;"></span> Volant (ignore obstacles)</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <button id="guideClose">Fermer</button>
+      </div>
     </div>
   </div>
 
@@ -833,7 +877,7 @@ button:active { transform: translateY(1px); }
         });
       }
     }
-    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: !isHub };
+    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
     const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
     let backGate = null;
     if (zone > 0) {
@@ -880,7 +924,7 @@ button:active { transform: translateY(1px); }
   const addItem = (item) => {
     state.stats.loot += 1;
     if (item.type === 'potion') {
-      state.player.potions = clamp(state.player.potions + 1, 0, 9);
+      state.player.inv.push({ type: 'potion', name: 'Potion' });
       showToast('Potion +1');
       audio.loot();
       return;
@@ -1708,6 +1752,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('character').style.display = 'none';
     document.getElementById('journal').style.display = 'none';
     document.getElementById('options').style.display = 'none';
+    document.getElementById('guide').style.display = 'none';
     document.getElementById('credits').style.display = 'none';
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('dialogue').style.display = 'none';
@@ -1976,10 +2021,12 @@ button:active { transform: translateY(1px); }
 
   document.getElementById('newBtn').addEventListener('click', () => openPanel('classMenu'));
   document.getElementById('contBtn').addEventListener('click', () => { if (!loadGame()) showToast('Aucune sauvegarde'); });
+  document.getElementById('guideBtn').addEventListener('click', () => openPanel('guide', false));
   document.getElementById('optBtn').addEventListener('click', () => openPanel('options'));
   document.getElementById('creditsBtn').addEventListener('click', () => openPanel('credits'));
   document.getElementById('creditsBack').addEventListener('click', () => openPanel('menu', false));
   document.getElementById('optBack').addEventListener('click', () => openPanel('menu', false));
+  document.getElementById('guideClose').addEventListener('click', () => openPanel('menu', false));
   document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
   document.getElementById('shopClose').addEventListener('click', closeOverlay);
   document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
