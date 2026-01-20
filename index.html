@@ -330,6 +330,7 @@ button:active { transform: translateY(1px); }
   const INTERACT_RANGE = 72;
   const NPC_INTERACT_RANGE = 84;
   const PICKUP_RANGE = 60;
+  const PLAYER_RADIUS = 6;
 
   const settings = {
     shake: true,
@@ -552,7 +553,8 @@ button:active { transform: translateY(1px); }
     lastHubCheckpoint: null,
     spellWheel: { open: false, options: [] },
     minimapZoom: 20,
-    debug: false
+    debug: false,
+    shopType: 'general'
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -585,8 +587,11 @@ button:active { transform: translateY(1px); }
     const forwardDoorTx = MAP - WALL_THICKNESS;
     const backDoorTx = WALL_THICKNESS - 1;
     const doorLocked = (doorTx, gateRef) => {
-      if (tx !== doorTx || !inDoorY) return null;
-      if (flow && gateRef) return gateRef.locked ? 6 : 0;
+      if (!inDoorY) return null;
+      if (tx < MAP - WALL_THICKNESS && tx > WALL_THICKNESS - 1) return null;
+      if (flow && gateRef && (tx >= MAP - WALL_THICKNESS || tx <= WALL_THICKNESS - 1)) {
+        return gateRef.locked ? 6 : 0;
+      }
       return 6;
     };
     const forwardDoor = doorLocked(forwardDoorTx, flow ? flow.gate : null);
@@ -611,6 +616,22 @@ button:active { transform: translateY(1px); }
     const tx = Math.floor((x % (MAP * TILE)) / TILE);
     const ty = Math.floor(y / TILE);
     return isSolid(tileAt(tx, ty, zoneIndex));
+  };
+
+  const collidesCircle = (x, y, r) => {
+    const points = [
+      [x - r, y - r],
+      [x + r, y - r],
+      [x - r, y + r],
+      [x + r, y + r]
+    ];
+    return points.some(([px, py]) => isSolidAt(px, py));
+  };
+
+  const getCamera = () => {
+    const camX = clamp(state.player.x - W / 2, 0, MAP * zones.length * TILE - W);
+    const camY = clamp(state.player.y - H / 2, 0, MAP * TILE - H);
+    return { camX, camY };
   };
 
   const showToast = (msg) => {
@@ -859,6 +880,28 @@ button:active { transform: translateY(1px); }
       const y = (12 + (idx % 6) * 3) * TILE;
       return { ...npc, x, y, recruited: false };
     });
+    acts.forEach((_, actIndex) => {
+      const hubZone = actIndex * 5 + 2;
+      const hubOffset = hubZone * MAP * TILE;
+      const vendors = [
+        { name: 'Mirel', role: 'Marchand HP', dialog: 'Des fioles pour tenir debout.' },
+        { name: 'Solen', role: 'Marchand Mana', dialog: 'La brume se vend au poids.' },
+        { name: 'Garrin', role: 'Marchand Équipement', dialog: 'Chaque lame a son serment.' },
+        { name: 'Atelier', role: 'Forge', dialog: 'Améliore ton serment.' },
+        { name: 'Revente', role: 'Revente', dialog: 'Je reprends vos artefacts.' }
+      ];
+      vendors.forEach((v, idx) => {
+        state.npcs.push({
+          name: v.name,
+          role: v.role,
+          dialog: v.dialog,
+          zone: hubZone,
+          x: hubOffset + (18 + idx * 4) * TILE,
+          y: 26 * TILE,
+          recruited: false
+        });
+      });
+    });
   };
 
   const initZoneFlow = (zone) => {
@@ -1017,6 +1060,12 @@ button:active { transform: translateY(1px); }
         const tx = startX + x;
         const ty = startY + y;
         const t = tileAt(tx, ty, zoneIndex);
+        const explored = state.explored[zoneIndex]?.has(`${tx},${ty}`);
+        if (!explored) {
+          mctx.fillStyle = '#0b0f16';
+          mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
+          continue;
+        }
         if (t === 6) mctx.fillStyle = '#7dd3fc';
         else if (t === 2) mctx.fillStyle = '#1f2937';
         else if (t === 3) mctx.fillStyle = '#374151';
@@ -1092,12 +1141,14 @@ button:active { transform: translateY(1px); }
     p.x += p.vx; p.y += p.vy;
     p.x = clamp(p.x, TILE * 2, TILE * (MAP * zones.length - 2));
     p.y = clamp(p.y, TILE * 2, TILE * (MAP - 2));
-    const tx = Math.floor((p.x % (MAP * TILE)) / TILE);
-    const ty = Math.floor(p.y / TILE);
-    if (isSolid(tileAt(tx, ty, currentZone()))) {
-      p.x -= p.vx; p.y -= p.vy;
+    if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) {
+      p.x -= p.vx;
+      if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.x += p.vx;
+      p.y -= p.vy;
+      if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.y += p.vy;
     }
     p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
+    p.attackCooldown = Math.max(0, (p.attackCooldown || 0) - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.skillCooldown = Math.max(0, p.skillCooldown - dt);
     p.iFrames = Math.max(0, p.iFrames - dt);
@@ -1178,6 +1229,11 @@ button:active { transform: translateY(1px); }
         flow.keyDropped = true;
         flow.bossState.alive = false;
         flow.bossState.defeated = true;
+        state.zoneCorruption[zone] = 0;
+        if (state.clearedZones < zone + 1) {
+          state.clearedZones = zone + 1;
+          state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
+        }
       }
       showToast('Clé obtenue.');
       addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
@@ -1230,10 +1286,13 @@ button:active { transform: translateY(1px); }
   };
 
   const doAttack = () => {
-    if (state.player.stam < 10) return;
     const p = state.player;
+    if (p.attackCooldown > 0) return;
+    p.attackCooldown = p.attackType === 'slashwave' ? 0.5 : 0.25;
+    if (p.stam < 10) return;
     p.stam -= 10;
-    const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    const { camX, camY } = getCamera();
+    const angle = Math.atan2(state.mouse.y + camY - p.y, state.mouse.x + camX - p.x);
     if (p.attackType === 'slashwave') {
       const range = 26;
       for (let i = state.enemies.length - 1; i >= 0; i--) {
@@ -1340,7 +1399,8 @@ button:active { transform: translateY(1px); }
     }
     p.mana -= cost;
     showToast(`Sort: ${spell.name}`);
-    const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    const { camX, camY } = getCamera();
+    const angle = Math.atan2(state.mouse.y + camY - state.player.y, state.mouse.x + camX - state.player.x);
     if (spell.effect === 'bolt') {
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb' });
     } else if (spell.effect === 'nova') {
@@ -1383,7 +1443,7 @@ button:active { transform: translateY(1px); }
         pr.y += pr.vy * dt;
       }
       pr.life -= dt;
-      if (isSolidAt(pr.x, pr.y)) pr.life = 0;
+      if (!pr.orbit && collidesCircle(pr.x, pr.y, pr.size || 2)) pr.life = 0;
       if (!settings.lowParticles && Math.random() > 0.4) {
         state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: pr.color || '#facc15' });
       }
@@ -1464,6 +1524,8 @@ button:active { transform: translateY(1px); }
     if (orb) {
       orb.active = false;
       flow.orbsDestroyed += 1;
+      state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.34, 0, 1);
+      state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
       showToast(`Noyau détruit ${flow.orbsDestroyed}/3`);
       if (flow.orbsDestroyed >= 3) {
         flow.altar.active = true;
@@ -1487,20 +1549,14 @@ button:active { transform: translateY(1px); }
       const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
       if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
       showToast('La porte s\'ouvre.');
-      state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
-      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
       return;
     }
     if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
-      state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
-      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
-      if ((zone + 1) % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
       return;
     }
     if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
-      state.player.x = (zone - 1) * MAP * TILE + (MAP - WALL_THICKNESS - 1) * TILE;
-      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
-      if ((zone - 1) % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone };
       return;
     }
     if (flow.isHub) {
@@ -1519,8 +1575,19 @@ button:active { transform: translateY(1px); }
     });
     if (nearNpc) {
       if (nearNpc.role.toLowerCase().includes('marchand')) {
+        state.shopType = nearNpc.role.toLowerCase().includes('mana') ? 'mana' : nearNpc.role.toLowerCase().includes('hp') ? 'hp' : nearNpc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
         renderShop();
         openPanel('shop');
+        return;
+      }
+      if (nearNpc.role === 'Forge') {
+        state.player.atk += 1; state.player.def += 1;
+        showToast('Amélioration appliquée');
+        return;
+      }
+      if (nearNpc.role === 'Revente') {
+        const item = state.player.inv.pop();
+        if (item) { state.gold += 10; showToast('Revente effectuée'); }
         return;
       }
       if (nearNpc.role === 'Compagnon' && !nearNpc.recruited) {
@@ -1535,15 +1602,7 @@ button:active { transform: translateY(1px); }
       ]);
       return;
     }
-    state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.1, 0, 1);
-    state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
-    showToast('Noyau purifié');
-    if (state.zoneCorruption[zone] <= 0 && state.clearedZones < zone + 1) {
-      state.clearedZones = zone + 1;
-      state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
-      showToast(`Zone purifiée: ${zones[zone].name}`);
-      addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
-    }
+    showToast('Rien à faire ici.');
   };
 
   const update = (ts) => {
@@ -1581,8 +1640,7 @@ button:active { transform: translateY(1px); }
     const p = state.player;
     const zone = zones[currentZone()];
     ctx.clearRect(0, 0, W, H);
-    const camX = clamp(p.x - W / 2, 0, MAP * zones.length * TILE - W);
-    const camY = clamp(p.y - H / 2, 0, MAP * TILE - H);
+    const { camX, camY } = getCamera();
     const startX = Math.floor(camX / TILE);
     const startY = Math.floor(camY / TILE);
     const endX = Math.ceil((camX + W) / TILE);
@@ -1605,7 +1663,7 @@ button:active { transform: translateY(1px); }
         ctx.fillRect(px, py, TILE, TILE);
       }
     }
-    const aim = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    const aim = Math.atan2(state.mouse.y + camY - p.y, state.mouse.x + camX - p.x);
     ctx.save();
     ctx.translate(p.x - camX, p.y - camY);
     ctx.rotate(aim);
@@ -1940,7 +1998,14 @@ button:active { transform: translateY(1px); }
     document.getElementById('shopGold').textContent = state.gold;
     const list = document.getElementById('shopList');
     list.innerHTML = '';
-    shopStock.forEach((s, idx) => {
+    const stock = state.shopType === 'mana'
+      ? [{ name: 'Potion de Mana', type: 'mana', price: 20 }]
+      : state.shopType === 'hp'
+        ? [{ name: 'Potion', type: 'potion', price: 15 }]
+        : state.shopType === 'equipment'
+          ? shopStock
+          : shopStock;
+    stock.forEach((s) => {
       const div = document.createElement('div');
       div.className = 'item';
       div.innerHTML = `<strong>${s.name}</strong> <span class="small">${s.price} or</span>`;
@@ -1950,6 +2015,10 @@ button:active { transform: translateY(1px); }
         if (state.gold < s.price) return showToast('Or insuffisant');
         state.gold -= s.price;
         if (s.type === 'potion') addItem({ type: 'potion', name: 'Potion' });
+        if (s.type === 'mana') {
+          state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+          showToast('Mana restauré');
+        }
         if (s.item) addItem({ ...s.item });
         renderShop();
       });
