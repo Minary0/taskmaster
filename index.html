@@ -25,7 +25,7 @@ Fichiers nécessaires:
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Veyl: Brume-Couronne</title>
+<title>VEYL REFORGED — L’Écho des Cendres</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <style>
 :root {
@@ -61,6 +61,15 @@ button:active { transform: translateY(1px); }
 .small { font-size: 12px; color: var(--text-dim); }
 
 #minimap { width: 150px; height: 150px; border: 2px solid var(--ui-border); background: #000; opacity: 0.8; }
+#spell-wheel { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); pointer-events: auto; }
+#spell-wheel .wheel { position: relative; width: 240px; height: 240px; border-radius: 50%; border: 1px solid #3a3a4e; background: rgba(10,10,16,0.85); box-shadow: 0 0 18px rgba(0,0,0,0.8); }
+#spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: grid; place-items: center; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
+#spell-wheel .slot:hover { border-color: var(--accent); color: var(--accent); }
+#spell-wheel .slot.top { top: -10px; left: 75px; }
+#spell-wheel .slot.left { left: -10px; top: 75px; }
+#spell-wheel .slot.right { right: -10px; top: 75px; }
+#spell-wheel .center { position: absolute; inset: 70px; border-radius: 50%; border: 1px solid #2a2a3a; display: grid; place-items: center; font-size: 12px; color: var(--text-dim); }
+#debug { position: absolute; left: 12px; bottom: 12px; background: rgba(10,10,16,0.8); border: 1px solid #2a3144; padding: 8px; font-size: 11px; display: none; pointer-events: auto; }
 
 #toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
 #toast.show { opacity: 1; }
@@ -110,7 +119,8 @@ button:active { transform: translateY(1px); }
 
   <div id="menu" class="overlay" style="display:flex;">
     <div class="panel" style="text-align:center;">
-      <h1>Veyl: Brume-Couronne</h1>
+      <h1>VEYL REFORGED</h1>
+      <h2>L’Écho des Cendres</h2>
       <p>RPG dark-fantasy jouable en navigateur, hors-ligne.</p>
       <button id="newBtn">Nouvelle partie</button>
       <button id="contBtn">Continuer</button>
@@ -141,18 +151,15 @@ button:active { transform: translateY(1px); }
     <div class="panel">
       <h2>Inventaire</h2>
       <div class="tabs">
-        <button data-tab="bag" class="active">Sac</button>
-        <button data-tab="equip">Équipement</button>
-        <button data-tab="craft">Artisanat</button>
+        <button data-tab="equip" class="active">Équipement</button>
+        <button data-tab="consumables">Consommables</button>
+        <button data-tab="allies">Alliés</button>
+        <button data-tab="quests">Quêtes</button>
       </div>
-      <div id="bagTab" class="list"></div>
-      <div id="equipTab" class="list hidden"></div>
-      <div id="craftTab" class="hidden">
-        <p>Forge: améliore arme/armure avec matériaux.</p>
-        <button id="forgeBtn">Forger (+1)</button>
-        <p>Enchantement: reroll d'un affixe.</p>
-        <button id="enchantBtn">Enchanter</button>
-      </div>
+      <div id="equipTab" class="list"></div>
+      <div id="consumablesTab" class="list hidden"></div>
+      <div id="alliesTab" class="list hidden"></div>
+      <div id="questsTab" class="list hidden"></div>
     </div>
   </div>
 
@@ -200,6 +207,8 @@ button:active { transform: translateY(1px); }
   <div id="options" class="overlay">
     <div class="panel">
       <h2>Options</h2>
+      <label class="small">Volume musique</label>
+      <input id="musicVolume" type="range" min="0" max="100" value="60" />
       <button id="toggleShake"></button>
       <button id="toggleParticles"></button>
       <button id="toggleMute"></button>
@@ -229,14 +238,23 @@ button:active { transform: translateY(1px); }
         <div class="item">Exploration: <strong id="gameOverExplore">0%</strong> <span class="small" id="gameOverExploreNote"></span></div>
       </div>
       <div style="margin-top:10px;">
-        <button id="gameOverRestart">Recommencer</button>
-        <button id="gameOverContinue">Continuer depuis la dernière porte</button>
+        <button id="gameOverRestart">Recommencer l’ACT</button>
+        <button id="gameOverContinue">Reprendre au dernier hub</button>
         <button id="gameOverMenu">Menu principal</button>
       </div>
     </div>
   </div>
 
   <div id="toast"></div>
+  <div id="spell-wheel">
+    <div class="wheel">
+      <div class="slot top" data-slot="0"></div>
+      <div class="slot left" data-slot="1"></div>
+      <div class="slot right" data-slot="2"></div>
+      <div class="center">Mana 1/3</div>
+    </div>
+  </div>
+  <div id="debug"></div>
 
   <div id="mobile">
     <div id="joy"><div id="joyDot"></div></div>
@@ -273,20 +291,32 @@ button:active { transform: translateY(1px); }
     shake: true,
     lowParticles: false,
     mute: false,
-    textSize: 1
+    textSize: 1,
+    volume: 0.6
   };
 
-  const zones = [
-    { id: 0, name: 'Les Marais Cendrés', danger: 1, fog: 0.4 },
-    { id: 1, name: 'Bois du Voile Noir', danger: 2, fog: 0.5 },
-    { id: 2, name: 'Ruines de Caldris', danger: 3, fog: 0.45 },
-    { id: 3, name: 'Cratère des Hymnes', danger: 4, fog: 0.6 },
-    { id: 4, name: 'Citadelle de l\'Astral-Morne', danger: 5, fog: 0.7 }
+  const acts = [
+    { name: 'Acte I', biome: 'Marais Cendrés' },
+    { name: 'Acte II', biome: 'Bois du Voile Noir' },
+    { name: 'Acte III', biome: 'Ruines de Caldris' },
+    { name: 'Acte IV', biome: 'Cratère des Hymnes' },
+    { name: 'Acte V', biome: 'Citadelle Astral-Morne' }
   ];
+  const zones = Array.from({ length: 25 }, (_, idx) => {
+    const act = Math.floor(idx / 5);
+    const zone = idx % 5;
+    return {
+      id: idx,
+      act,
+      zone,
+      name: `${acts[act].biome} — Zone ${zone + 1}`,
+      fog: 0.35 + zone * 0.05 + act * 0.04
+    };
+  });
 
   const classes = {
     blade: {
-      name: 'Lame',
+      name: 'Lame du Serment',
       hp: 120,
       stam: 120,
       mana: 40,
@@ -452,7 +482,7 @@ button:active { transform: translateY(1px); }
     time: 0,
     runTime: 0,
     seed: Math.floor(Math.random() * 1e9),
-    zoneCorruption: [1, 1, 1, 1, 1],
+    zoneCorruption: Array(25).fill(1),
     clearedZones: 0,
     player: null,
     companions: [],
@@ -474,7 +504,11 @@ button:active { transform: translateY(1px); }
     mouse: { x: W / 2, y: H / 2 },
     stats: { kills: 0, loot: 0 },
     explored: {},
-    lastCheckpoint: null
+    lastCheckpoint: null,
+    lastHubCheckpoint: null,
+    spellWheel: { open: false, options: [] },
+    minimapZoom: 20,
+    debug: false
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -579,10 +613,12 @@ button:active { transform: translateY(1px); }
 
   const updateGameOverStats = () => {
     const zone = currentZone();
-    const progress = Math.round(((zone + 1) / zones.length) * 100);
+    const progress = Math.round(((state.clearedZones + 1) / zones.length) * 100);
+    const actIndex = Math.floor(zone / 5);
+    const zoneIndex = zone % 5;
     document.getElementById('gameOverProgress').textContent = `${progress}%`;
-    document.getElementById('gameOverProgressNote').textContent = `(zones traversées: ${zone + 1}/${zones.length})`;
-    document.getElementById('gameOverZone').textContent = `Zone ${zone + 1}/${zones.length} – ${zones[zone].name}`;
+    document.getElementById('gameOverProgressNote').textContent = `(zones purifiées: ${state.clearedZones + 1}/${zones.length})`;
+    document.getElementById('gameOverZone').textContent = `${acts[actIndex].name} — Zone ${zoneIndex + 1}/5`;
     document.getElementById('gameOverKills').textContent = state.stats.kills;
     document.getElementById('gameOverLoot').textContent = state.stats.loot;
     document.getElementById('gameOverTime').textContent = formatTime(state.runTime);
@@ -602,9 +638,10 @@ button:active { transform: translateY(1px); }
   const continueFromCheckpoint = () => {
     state.dead = false;
     state.paused = false;
-    if (state.lastCheckpoint) {
-      state.player.x = state.lastCheckpoint.x;
-      state.player.y = state.lastCheckpoint.y;
+    const hub = state.lastHubCheckpoint || state.lastCheckpoint;
+    if (hub) {
+      state.player.x = hub.x;
+      state.player.y = hub.y;
     } else {
       state.player.x = 30 * TILE;
       state.player.y = 30 * TILE;
@@ -621,7 +658,7 @@ button:active { transform: translateY(1px); }
       time: 0,
       runTime: 0,
       seed: Math.floor(Math.random() * 1e9),
-      zoneCorruption: [1, 1, 1, 1, 1],
+      zoneCorruption: Array(25).fill(1),
       clearedZones: 0,
       player: null,
       companions: [],
@@ -643,7 +680,8 @@ button:active { transform: translateY(1px); }
       mouse: { x: W / 2, y: H / 2 },
       stats: { kills: 0, loot: 0 },
       explored: {},
-      lastCheckpoint: null
+      lastCheckpoint: null,
+      lastHubCheckpoint: null
     });
     buildNpcInstances();
     hideAll();
@@ -669,7 +707,7 @@ button:active { transform: translateY(1px); }
       const gain = this.ctx.createGain();
       osc.type = type;
       osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(vol, t);
+      gain.gain.setValueAtTime(vol * settings.volume, t);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -684,7 +722,7 @@ button:active { transform: translateY(1px); }
       this.stopMusic();
       const tempo = 72;
       const beat = 60 / tempo;
-      const base = 110 + zone * 8;
+      const base = 110 + zone * 3;
       const prog = [0, 8, 3, 10];
       const melody = [0, 3, 5, 7, 5, 3, 0, -2];
       let step = 0;
@@ -696,7 +734,7 @@ button:active { transform: translateY(1px); }
         const gain = this.ctx.createGain();
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(base * Math.pow(2, chord / 12), t);
-        gain.gain.setValueAtTime(0.02, t);
+        gain.gain.setValueAtTime(0.02 * settings.volume, t);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + beat * 2);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -707,7 +745,7 @@ button:active { transform: translateY(1px); }
         const gain2 = this.ctx.createGain();
         osc2.type = 'sine';
         osc2.frequency.setValueAtTime(base * Math.pow(2, (chord + m) / 12), t);
-        gain2.gain.setValueAtTime(0.012, t);
+        gain2.gain.setValueAtTime(0.012 * settings.volume, t);
         gain2.gain.exponentialRampToValueAtTime(0.0001, t + beat);
         osc2.connect(gain2);
         gain2.connect(this.ctx.destination);
@@ -782,17 +820,20 @@ button:active { transform: translateY(1px); }
   const initZoneFlow = (zone) => {
     const key = `zone-${zone}`;
     if (state.zoneFlow[key]) return;
+    const isHub = zone % 5 === 2;
     const orbs = [];
-    for (let i = 0; i < 3; i++) {
-      orbs.push({
-        id: `orb-${zone}-${i}`,
-        type: 'orb',
-        x: zone * MAP * TILE + (12 + i * 6) * TILE,
-        y: (14 + i * 4) * TILE,
-        active: true
-      });
+    if (!isHub) {
+      for (let i = 0; i < 3; i++) {
+        orbs.push({
+          id: `orb-${zone}-${i}`,
+          type: 'orb',
+          x: zone * MAP * TILE + (12 + i * 6) * TILE,
+          y: (14 + i * 4) * TILE,
+          active: true
+        });
+      }
     }
-    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
+    const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: !isHub };
     const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
     let backGate = null;
     if (zone > 0) {
@@ -806,10 +847,14 @@ button:active { transform: translateY(1px); }
       gate,
       backGate,
       keyDropped: false,
-      bossState: { spawned: false, alive: false, defeated: false }
+      bossState: { spawned: false, alive: false, defeated: false },
+      isHub
     };
     state.interactables.push(...orbs, altar, gate);
     if (backGate) state.interactables.push(backGate);
+    if (isHub) {
+      state.interactables.push({ id: `rest-${zone}`, type: 'rest', x: zone * MAP * TILE + 18 * TILE, y: 24 * TILE });
+    }
   };
 
   const rollItem = (zoneIndex) => {
@@ -885,6 +930,7 @@ button:active { transform: translateY(1px); }
     if (state.spawnTimer > 0) return;
     if (state.enemies.length >= 12) return;
     const zoneIndex = currentZone();
+    if (state.zoneFlow[`zone-${zoneIndex}`]?.isHub) return;
     for (let i = 0; i < 1; i++) {
       const x = state.player.x + (Math.random() * 500 - 250);
       const y = state.player.y + (Math.random() * 400 - 200);
@@ -901,56 +947,59 @@ button:active { transform: translateY(1px); }
     document.getElementById('manaBar').style.width = `${(state.player.mana / state.player.manaMax) * 100}%`;
     document.getElementById('lvlText').textContent = state.player.level;
     document.getElementById('goldText').textContent = state.gold;
-    const zone = zones[currentZone()];
-    document.getElementById('zoneText').textContent = zone.name;
+    const zoneIndex = currentZone();
+    const zone = zones[zoneIndex];
+    const actIndex = Math.floor(zoneIndex / 5);
+    const zoneLocal = zoneIndex % 5;
+    document.getElementById('zoneText').textContent = `${acts[actIndex].name} — Zone ${zoneLocal + 1}/5`;
     const flow = state.zoneFlow[`zone-${zone.id}`];
-    const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
+    const obj = flow ? (flow.isHub ? 'Repos & Commerce' : flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
     document.getElementById('questText').textContent = `Objectif: ${obj}`;
   };
 
   const updateMini = () => {
-    const mapW = MAP * zones.length;
-    const mapH = MAP;
-    const cellW = mini.width / mapW;
-    const cellH = mini.height / mapH;
-    const scaleX = mini.width / (MAP * TILE * zones.length);
-    const scaleY = mini.height / (MAP * TILE);
+    const zoneIndex = currentZone();
+    const playerLocalX = state.player.x - zoneIndex * MAP * TILE;
+    const playerLocalY = state.player.y;
+    const viewTiles = state.minimapZoom;
+    const scale = mini.width / (viewTiles * TILE);
     mctx.clearRect(0, 0, mini.width, mini.height);
     mctx.fillStyle = '#0b0f16';
     mctx.fillRect(0, 0, mini.width, mini.height);
-    for (let y = 0; y < mapH; y++) {
-      for (let x = 0; x < mapW; x++) {
-        const zoneIndex = Math.floor(x / MAP);
-        const t = tileAt(x % MAP, y, zoneIndex);
+    const startX = Math.floor(playerLocalX / TILE) - Math.floor(viewTiles / 2);
+    const startY = Math.floor(playerLocalY / TILE) - Math.floor(viewTiles / 2);
+    for (let y = 0; y < viewTiles; y++) {
+      for (let x = 0; x < viewTiles; x++) {
+        const tx = startX + x;
+        const ty = startY + y;
+        const t = tileAt(tx, ty, zoneIndex);
         if (t === 6) mctx.fillStyle = '#7dd3fc';
         else if (t === 2) mctx.fillStyle = '#1f2937';
         else if (t === 3) mctx.fillStyle = '#374151';
         else if (t === 4) mctx.fillStyle = '#1f2d1f';
         else if (t === 5) mctx.fillStyle = '#2f2f38';
         else mctx.fillStyle = '#111827';
-        mctx.fillRect(x * cellW, y * cellH, cellW + 0.2, cellH + 0.2);
+        mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
       }
     }
     const drawDot = (x, y, color, size = 2) => {
+      const dx = (x - zoneIndex * MAP * TILE) - playerLocalX + (viewTiles * TILE) / 2;
+      const dy = y - playerLocalY + (viewTiles * TILE) / 2;
       mctx.fillStyle = color;
-      mctx.fillRect(x * scaleX - size / 2, y * scaleY - size / 2, size, size);
+      mctx.fillRect(dx * scale - size / 2, dy * scale - size / 2, size, size);
     };
-    state.enemies.forEach(e => drawDot(e.x, e.y, '#ef4444', 2.2));
-    state.drops.forEach(d => drawDot(d.x, d.y, '#facc15', 2.2));
+    state.enemies.forEach(e => drawDot(e.x, e.y, '#ef4444', 2.4));
+    state.drops.forEach(d => drawDot(d.x, d.y, '#facc15', 2.4));
     state.interactables.forEach(it => {
+      if (Math.floor(it.x / (MAP * TILE)) !== zoneIndex) return;
       if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
+      else if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 2.6);
       else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
     });
-    for (let z = 0; z < zones.length; z++) {
-      const gateX = z * MAP * TILE + (MAP - WALL_THICKNESS) * TILE;
-      drawDot(gateX, 24 * TILE, '#38bdf8', 2.6);
-      if (z > 0) {
-        const backGateX = z * MAP * TILE + (WALL_THICKNESS - 1) * TILE;
-        drawDot(backGateX, 24 * TILE, '#38bdf8', 2.6);
-      }
-    }
     state.companions.forEach(c => drawDot(c.x, c.y, '#22c55e', 2.2));
-    state.npcs.forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.2));
+    state.npcs.forEach(npc => {
+      if (Math.floor(npc.x / (MAP * TILE)) === zoneIndex) drawDot(npc.x, npc.y, '#a3e635', 2.2);
+    });
     if (state.boss) drawDot(state.boss.x, state.boss.y, '#a855f7', 3);
     drawDot(state.player.x, state.player.y, '#22c55e', 3);
   };
@@ -1005,7 +1054,6 @@ button:active { transform: translateY(1px); }
       p.x -= p.vx; p.y -= p.vy;
     }
     p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
-    p.mana = clamp(p.mana + dt * 6, 0, p.manaMax);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.skillCooldown = Math.max(0, p.skillCooldown - dt);
     p.iFrames = Math.max(0, p.iFrames - dt);
@@ -1016,13 +1064,18 @@ button:active { transform: translateY(1px); }
     const p = state.player;
     for (let i = state.enemies.length - 1; i >= 0; i--) {
       const e = state.enemies[i];
+      if (e.poison > 0) {
+        e.poison -= dt;
+        e.hp -= dt * 3;
+      }
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const dist2 = dx * dx + dy * dy;
+      const slow = e.slow > 0 ? 0.5 : 1;
       if (dist2 < 180 * 180) {
         const dist = Math.sqrt(dist2) || 1;
-        e.vx = (dx / dist) * 45 * dt;
-        e.vy = (dy / dist) * 45 * dt;
+        e.vx = (dx / dist) * 45 * dt * slow;
+        e.vy = (dy / dist) * 45 * dt * slow;
         const nx = e.x + e.vx;
         const ny = e.y + e.vy;
         if (!isSolidAt(nx, e.y)) e.x = nx;
@@ -1033,13 +1086,14 @@ button:active { transform: translateY(1px); }
           if (p.hp <= 0) { handleDeath(); }
         }
       } else {
-        e.vx = Math.sin(state.time + i) * 10 * dt;
-        e.vy = Math.cos(state.time + i) * 10 * dt;
+        e.vx = Math.sin(state.time + i) * 10 * dt * slow;
+        e.vy = Math.cos(state.time + i) * 10 * dt * slow;
         const nx = e.x + e.vx;
         const ny = e.y + e.vy;
         if (!isSolidAt(nx, e.y)) e.x = nx;
         if (!isSolidAt(e.x, ny)) e.y = ny;
       }
+      e.slow = Math.max(0, (e.slow || 0) - dt);
       e.cooldown = Math.max(0, e.cooldown - dt);
     }
   };
@@ -1196,48 +1250,94 @@ button:active { transform: translateY(1px); }
     });
   };
 
-  const castSpell = (slot) => {
+  const spells = [
+    { id: 'bolt', name: 'Bolt', effect: 'bolt' },
+    { id: 'nova', name: 'Nova', effect: 'nova' },
+    { id: 'ice', name: 'Ice Spike', effect: 'ice' },
+    { id: 'fire', name: 'Fireball', effect: 'fire' },
+    { id: 'chain', name: 'Chain Lightning', effect: 'chain' },
+    { id: 'poison', name: 'Poison Cloud', effect: 'poison' },
+    { id: 'shield', name: 'Shield', effect: 'shield' },
+    { id: 'blink', name: 'Blink', effect: 'blink' },
+    { id: 'gravity', name: 'Gravity Pull', effect: 'gravity' },
+    { id: 'summon', name: 'Summon Orb', effect: 'summon' }
+  ];
+
+  const openSpellWheel = () => {
+    if (state.dead || state.spellWheel.open) return;
+    const unlocked = spells;
+    const picks = [];
+    while (picks.length < 3) {
+      const pick = unlocked[Math.floor(Math.random() * unlocked.length)];
+      if (!picks.find(p => p.id === pick.id)) picks.push(pick);
+    }
+    state.spellWheel = { open: true, options: picks };
+    const wheel = document.getElementById('spell-wheel');
+    wheel.style.display = 'flex';
+    wheel.querySelectorAll('.slot').forEach((slot, idx) => {
+      slot.textContent = picks[idx].name;
+    });
+    state.paused = true;
+  };
+
+  const closeSpellWheel = () => {
+    state.spellWheel.open = false;
+    document.getElementById('spell-wheel').style.display = 'none';
+    state.paused = false;
+  };
+
+  const castSpell = (spell) => {
     const p = state.player;
-    const spells = {
-      1: { name: 'Éclat', cost: 20, cd: 4, dmg: 14, speed: 240 },
-      2: { name: 'Nova', cost: 30, cd: 6, dmg: 10, radius: 60 },
-      3: { name: 'Chaînes', cost: 25, cd: 8, slow: 0.5 },
-      4: { name: 'Furie', cost: 35, cd: 12, buff: 3 }
-    };
-    const spell = spells[slot];
-    if (!spell || p.skillCooldown > 0 || p.mana < spell.cost) return;
-    p.mana -= spell.cost;
-    p.skillCooldown = spell.cd;
-    if (slot === 1) {
-      const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
-      state.projectiles.push({
-        x: p.x,
-        y: p.y,
-        vx: Math.cos(angle) * spell.speed,
-        vy: Math.sin(angle) * spell.speed,
-        life: 1.2,
-        dmg: spell.dmg + p.stats.spi,
-        size: 4,
-        color: '#38bdf8',
-        shape: 'orb'
-      });
-    } else if (slot === 2) {
+    const cost = p.manaMax / 3;
+    if (p.mana < cost) {
+      showToast('Mana insuffisant');
+      audio.tone(120, 0.1, 'sine', 0.05);
+      return;
+    }
+    p.mana -= cost;
+    showToast(`Sort: ${spell.name}`);
+    const angle = Math.atan2(state.mouse.y - H / 2, state.mouse.x - W / 2);
+    if (spell.effect === 'bolt') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb' });
+    } else if (spell.effect === 'nova') {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
-        if (dx * dx + dy * dy < spell.radius * spell.radius) e.hp -= spell.dmg + p.stats.spi;
+        if (dx * dx + dy * dy < 80 * 80) e.hp -= 12;
       });
-    } else if (slot === 3) {
-      state.enemies.forEach(e => { e.slow = 1.5; });
-    } else if (slot === 4) {
-      p.atk += 5; p.def += 2; setTimeout(() => { p.atk -= 5; p.def -= 2; }, spell.buff * 1000);
+    } else if (spell.effect === 'ice') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6 });
+    } else if (spell.effect === 'fire') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true });
+    } else if (spell.effect === 'chain') {
+      let target = state.enemies[0];
+      if (target) target.hp -= 14;
+      if (state.enemies[1]) state.enemies[1].hp -= 10;
+    } else if (spell.effect === 'poison') {
+      state.enemies.forEach(e => { e.poison = 2.5; });
+    } else if (spell.effect === 'shield') {
+      p.def += 4; setTimeout(() => { p.def -= 4; }, 3000);
+    } else if (spell.effect === 'blink') {
+      p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
+    } else if (spell.effect === 'gravity') {
+      state.enemies.forEach(e => {
+        e.x += (p.x - e.x) * 0.1;
+        e.y += (p.y - e.y) * 0.1;
+      });
+    } else if (spell.effect === 'summon') {
+      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true });
     }
   };
 
   const updateProjectiles = (dt) => {
     for (let i = state.projectiles.length - 1; i >= 0; i--) {
       const pr = state.projectiles[i];
-      pr.x += pr.vx * dt;
-      pr.y += pr.vy * dt;
+      if (pr.orbit) {
+        pr.x = state.player.x + Math.cos(state.time + i) * 40;
+        pr.y = state.player.y + Math.sin(state.time + i) * 40;
+      } else {
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+      }
       pr.life -= dt;
       if (isSolidAt(pr.x, pr.y)) pr.life = 0;
       if (!settings.lowParticles && Math.random() > 0.4) {
@@ -1252,6 +1352,14 @@ button:active { transform: translateY(1px); }
         const dy = e.y - pr.y;
         if (dx * dx + dy * dy < 12 * 12) {
           e.hp -= Math.max(1, pr.dmg - e.def);
+          if (pr.slow) e.slow = pr.slow;
+          if (pr.explode) {
+            state.enemies.forEach(other => {
+              const ex = other.x - pr.x;
+              const ey = other.y - pr.y;
+              if (ex * ex + ey * ey < 50 * 50) other.hp -= 8;
+            });
+          }
           audio.hit();
           pr.life = 0;
           if (e.hp <= 0) {
@@ -1319,10 +1427,10 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE) {
+    if (!flow.isHub && zone % 5 === 4 && flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE) {
       // FIX: boss spawns only once per zone until defeated.
       if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
-        state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
+        state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 260 + zone * 40, hpMax: 260 + zone * 40, phase: 1 };
         flow.bossState.spawned = true;
         flow.bossState.alive = true;
         audio.menu();
@@ -1342,12 +1450,23 @@ button:active { transform: translateY(1px); }
     if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
       state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
       state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
+      if ((zone + 1) % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
       return;
     }
     if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
       state.player.x = (zone - 1) * MAP * TILE + (MAP - WALL_THICKNESS - 1) * TILE;
       state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
+      if ((zone - 1) % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
       return;
+    }
+    if (flow.isHub) {
+      const rest = state.interactables.find(i => i.type === 'rest' && Math.hypot(i.x - state.player.x, i.y - state.player.y) < INTERACT_RANGE);
+      if (rest) {
+        state.player.hp = state.player.hpMax;
+        state.player.mana = state.player.manaMax;
+        showToast('Repos accordé.');
+        return;
+      }
     }
     const nearNpc = state.npcs.find(npc => {
       const dx = npc.x - state.player.x;
@@ -1401,6 +1520,15 @@ button:active { transform: translateY(1px); }
     updateBars();
     updateMini();
     updateParticles(dt);
+    if (state.debug) {
+      document.getElementById('debug').textContent = [
+        `seed: ${state.seed}`,
+        `act: ${Math.floor(currentZone() / 5) + 1}`,
+        `zone: ${(currentZone() % 5) + 1}`,
+        `mana: ${state.player.mana.toFixed(0)}/${state.player.manaMax}`,
+        `stamina: ${state.player.stam.toFixed(0)}/${state.player.stamMax}`
+      ].join('\n');
+    }
     draw();
     requestAnimationFrame(update);
   };
@@ -1500,12 +1628,15 @@ button:active { transform: translateY(1px); }
       ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
     });
     if (state.boss) {
+      ctx.fillStyle = '#1a0f0f';
+      ctx.fillRect(10, 10, 220, 10);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(10, 10, 220 * (state.boss.hp / state.boss.hpMax), 10);
       ctx.fillStyle = '#7f1d1d';
       ctx.fillRect(state.boss.x - camX - 8, state.boss.y - camY - 8, 16, 16);
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(state.boss.x - camX - 10, state.boss.y - camY - 14, 20 * (state.boss.hp / state.boss.hpMax), 3);
     }
-    ctx.fillStyle = '#ef4444';
     state.enemies.forEach(e => {
       ctx.fillStyle = '#16a34a';
       ctx.fillRect(e.x - camX - 5, e.y - camY - 5, 10, 10);
@@ -1547,6 +1678,10 @@ button:active { transform: translateY(1px); }
     }
     if (!state.stats) state.stats = { kills: 0, loot: 0 };
     if (!state.explored) state.explored = {};
+    if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
+    if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
+    if (!state.minimapZoom) state.minimapZoom = 20;
+    if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
     Object.values(state.zoneFlow || {}).forEach(flow => {
       if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
     });
@@ -1591,21 +1726,51 @@ button:active { transform: translateY(1px); }
   };
 
   const renderInventory = () => {
-    const bag = document.getElementById('bagTab');
     const equip = document.getElementById('equipTab');
-    bag.innerHTML = '';
+    const consumables = document.getElementById('consumablesTab');
+    const allies = document.getElementById('alliesTab');
+    const questsPanel = document.getElementById('questsTab');
     equip.innerHTML = '';
-    state.player.inv.forEach((it, idx) => {
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `<div><strong>${it.name}</strong> <span class="tag ${it.rarity || 'common'}">${it.rarity || 'unique'}</span></div><div>${it.affix || it.desc || ''}</div><button data-equip="${idx}">Équiper</button>`;
-      bag.appendChild(div);
-    });
+    consumables.innerHTML = '';
+    allies.innerHTML = '';
+    questsPanel.innerHTML = '';
     Object.entries(state.player.equip).forEach(([slot, it]) => {
       const div = document.createElement('div');
       div.className = 'item';
       div.innerHTML = `<div><strong>${slot.toUpperCase()}</strong></div><div>${it ? it.name : 'Vide'}</div>`;
       equip.appendChild(div);
+    });
+    state.player.inv.forEach((it, idx) => {
+      if (it.type === 'potion') return;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div><strong>${it.name}</strong> <span class="tag ${it.rarity || 'common'}">${it.rarity || 'unique'}</span></div><div>${it.affix || it.desc || ''}</div><button data-equip="${idx}">Équiper</button>`;
+      equip.appendChild(div);
+    });
+    const potionIndexes = state.player.inv.map((it, idx) => it.type === 'potion' ? idx : null).filter(idx => idx !== null);
+    if (!potionIndexes.length) {
+      consumables.innerHTML = '<div class="item">Aucune potion.</div>';
+    } else {
+      potionIndexes.forEach((idx) => {
+        const it = state.player.inv[idx];
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<div><strong>${it.name}</strong></div><button data-use="${idx}">Utiliser</button>`;
+        consumables.appendChild(div);
+      });
+    }
+    state.companions.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${c.name}</strong><div class="small">Rôle: ${c.role}</div>`;
+      allies.appendChild(div);
+    });
+    quests.forEach(q => {
+      const done = state.quests[q.id]?.done;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>`;
+      questsPanel.appendChild(div);
     });
   };
 
@@ -1618,7 +1783,7 @@ button:active { transform: translateY(1px); }
       <div class="small">XP: ${state.player.xp}/${state.player.xpNext}</div>
       <div class="small">Or: ${state.gold}</div>
       <div class="small">Matériaux: ${state.materials}</div>
-      <div class="small">Potions: ${state.player.potions}</div>
+      <div class="small">Potions: ${state.player.inv.filter(it => it.type === 'potion').length}</div>
     `;
     points.innerHTML = '';
     ['str','agi','spi','vit'].forEach(stat => {
@@ -1754,6 +1919,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('toggleParticles').textContent = `Particles: ${settings.lowParticles ? 'LOW' : 'HIGH'}`;
     document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
     document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
+    document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
   };
 
   const loadSettings = () => {
@@ -1781,7 +1947,7 @@ button:active { transform: translateY(1px); }
     state.drops.length = 0;
     state.interactables.length = 0;
     state.zoneFlow = {};
-    state.zoneCorruption = [1, 1, 1, 1, 1];
+    state.zoneCorruption = Array(25).fill(1);
     state.clearedZones = 0;
     state.materials = 0;
     state.gold = 0;
@@ -1790,6 +1956,7 @@ button:active { transform: translateY(1px); }
     quests.forEach(q => state.quests[q.id] = { done: false });
     lore.forEach((_, i) => state.loreFound[i] = false);
     buildNpcInstances();
+    state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'potion', name: 'Potion' });
     hideAll();
     audio.init();
     audio.ambient(currentZone());
@@ -1819,7 +1986,25 @@ button:active { transform: translateY(1px); }
   document.getElementById('saveBtn').addEventListener('click', saveGame);
   document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
   document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
-  document.getElementById('gameOverRestart').addEventListener('click', () => resetRun());
+  const restartAct = () => {
+    const actStart = Math.floor(currentZone() / 5) * 5;
+    state.running = true;
+    state.dead = false;
+    state.paused = false;
+    state.player.hp = state.player.hpMax;
+    state.player.mana = state.player.manaMax;
+    state.player.x = actStart * MAP * TILE + 30 * TILE;
+    state.player.y = 30 * TILE;
+    state.enemies.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
+    state.drops.length = 0;
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    if (actStart % 5 === 2) state.lastHubCheckpoint = { x: state.player.x, y: state.player.y, zone: actStart };
+    hideAll();
+  };
+
+  document.getElementById('gameOverRestart').addEventListener('click', () => restartAct());
   document.getElementById('gameOverContinue').addEventListener('click', () => continueFromCheckpoint());
   document.getElementById('gameOverMenu').addEventListener('click', () => { state.paused = false; state.running = false; state.dead = false; openPanel('menu'); });
 
@@ -1827,23 +2012,30 @@ button:active { transform: translateY(1px); }
   document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
   document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
   document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
-
-  document.getElementById('forgeBtn').addEventListener('click', () => {
-    if (state.materials < 3) return showToast('Matériaux insuffisants');
-    state.materials -= 3; state.player.atk += 1; state.player.def += 1; showToast('Forge réussie');
+  document.getElementById('musicVolume').addEventListener('input', (e) => {
+    settings.volume = clamp(Number(e.target.value) / 100, 0, 1);
+    applySettings();
+    saveSettings();
   });
 
-  document.getElementById('enchantBtn').addEventListener('click', () => {
-    if (state.gold < 20) return showToast('Or insuffisant');
-    state.gold -= 20; showToast('Affixe reroll');
-  });
-
-  document.getElementById('bagTab').addEventListener('click', (e) => {
+  document.getElementById('equipTab').addEventListener('click', (e) => {
     if (e.target.matches('button[data-equip]')) {
       const idx = Number(e.target.dataset.equip);
       const item = state.player.inv.splice(idx, 1)[0];
       if (item) state.player.equip[item.slot] = item;
       renderInventory();
+    }
+  });
+  document.getElementById('consumablesTab').addEventListener('click', (e) => {
+    if (e.target.matches('button[data-use]')) {
+      const idx = Number(e.target.dataset.use);
+      const item = state.player.inv[idx];
+      if (item && item.type === 'potion') {
+        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.inv.splice(idx, 1);
+        showToast('Potion utilisée');
+        renderInventory();
+      }
     }
   });
 
@@ -1857,6 +2049,10 @@ button:active { transform: translateY(1px); }
 
   document.addEventListener('keydown', (e) => {
     if (state.dead) return;
+    if (e.key === 'Escape' && state.spellWheel.open) {
+      closeSpellWheel();
+      return;
+    }
     if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
     if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
     if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
@@ -1867,10 +2063,10 @@ button:active { transform: translateY(1px); }
     if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
     if (e.key === 'c') { openPanel('character'); renderCharacter(); }
     if (e.key === 'q') { openPanel('journal'); renderJournal(); }
-    if (e.key === '1') castSpell(1);
-    if (e.key === '2') castSpell(2);
-    if (e.key === '3') castSpell(3);
-    if (e.key === '4') castSpell(4);
+    if (e.key.toLowerCase() === 'r') openSpellWheel();
+    if (e.key === '+' || e.key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
+    if (e.key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
+    if (e.key.toLowerCase() === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
     if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
   });
 
@@ -1890,6 +2086,7 @@ button:active { transform: translateY(1px); }
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
   });
   canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
+  canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); openSpellWheel(); });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
   window.addEventListener('blur', () => state.paused = true);
@@ -1899,9 +2096,6 @@ button:active { transform: translateY(1px); }
     if (keys.attack) doAttack();
     if (keys.interact) onInteract();
     if (keys.dash) keys.dash = false;
-    if (state.player.hp < state.player.hpMax * 0.3 && state.player.potions > 0) {
-      state.player.potions--; state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
-    }
   }, 200);
 
   const joy = document.getElementById('joy');
@@ -1932,6 +2126,18 @@ button:active { transform: translateY(1px); }
     });
   });
 
+  const spellWheel = document.getElementById('spell-wheel');
+  spellWheel.addEventListener('click', (e) => {
+    if (!state.spellWheel.open) return;
+    const slot = e.target.closest('.slot');
+    if (slot) {
+      const idx = Number(slot.dataset.slot);
+      const spell = state.spellWheel.options[idx];
+      if (spell) castSpell(spell);
+    }
+    closeSpellWheel();
+  });
+
   const resize = () => {
     const { innerWidth: iw, innerHeight: ih } = window;
     const ratio = 16 / 9;
@@ -1951,7 +2157,7 @@ button:active { transform: translateY(1px); }
     classList.appendChild(card);
   });
 
-  setTabs(document.getElementById('inventory'), ['bagTab', 'equipTab', 'craftTab']);
+  setTabs(document.getElementById('inventory'), ['equipTab', 'consumablesTab', 'alliesTab', 'questsTab']);
   setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
 
   loadSettings();
