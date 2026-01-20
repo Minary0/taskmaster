@@ -245,8 +245,10 @@ button:active { transform: translateY(1px); }
   const H = 540;
   const TILE = 16;
   const MAP = 64;
-  const INTERACT_RANGE = 42;
-  const NPC_INTERACT_RANGE = 56;
+  const WALL_THICKNESS = 3;
+  const INTERACT_RANGE = 72;
+  const NPC_INTERACT_RANGE = 84;
+  const PICKUP_RANGE = 60;
 
   const settings = {
     shake: true,
@@ -474,12 +476,23 @@ button:active { transform: translateY(1px); }
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
     const gateY = 24;
-    const gateGap = Math.abs(ty - gateY) <= 1;
-    if (zone > 0 && (tx === 0 || tx === 1)) {
-      return gateGap ? 0 : 6; // ice wall
-    }
-    if (zone < zones.length - 1 && (tx === MAP - 1 || tx === MAP - 2)) {
-      return gateGap ? 0 : 6; // ice wall
+    const doorSpan = 1;
+    const inDoorY = Math.abs(ty - gateY) <= doorSpan;
+    // Ice walls are continuous; only doors can open passages between zones.
+    const flow = state.zoneFlow[`zone-${zone}`];
+    const forwardDoorTx = MAP - WALL_THICKNESS;
+    const backDoorTx = WALL_THICKNESS - 1;
+    const doorLocked = (doorTx, gateRef) => {
+      if (tx !== doorTx || !inDoorY) return null;
+      if (flow && gateRef) return gateRef.locked ? 6 : 0;
+      return 6;
+    };
+    const forwardDoor = doorLocked(forwardDoorTx, flow ? flow.gate : null);
+    if (forwardDoor !== null) return forwardDoor;
+    const backDoor = doorLocked(backDoorTx, flow ? flow.backGate : null);
+    if (backDoor !== null) return backDoor;
+    if (tx < WALL_THICKNESS || tx >= MAP - WALL_THICKNESS) {
+      return 6; // ice wall (solid)
     }
     const n = noise(tx, ty, state.seed + zone * 77);
     if (n < 0.03) return 2; // water
@@ -495,15 +508,6 @@ button:active { transform: translateY(1px); }
     const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
     const tx = Math.floor((x % (MAP * TILE)) / TILE);
     const ty = Math.floor(y / TILE);
-    if (state.interactables) {
-      const gateBlock = state.interactables.some(it => {
-        if (it.type !== 'gate' || !it.locked) return false;
-        const dx = it.x - x;
-        const dy = it.y - y;
-        return dx * dx + dy * dy < 12 * 12;
-      });
-      if (gateBlock) return true;
-    }
     return isSolid(tileAt(tx, ty, zoneIndex));
   };
 
@@ -658,12 +662,12 @@ button:active { transform: translateY(1px); }
       });
     }
     const altar = { id: `altar-${zone}`, type: 'altar', x: zone * MAP * TILE + 24 * TILE, y: 18 * TILE, active: false };
-    const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - 2) * TILE, y: 24 * TILE, locked: true };
+    const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
     let backGate = null;
     if (zone > 0) {
       const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
       const unlocked = prevFlow ? !prevFlow.gate.locked : false;
-      backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + 2 * TILE, y: 24 * TILE, locked: !unlocked };
+      backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + (WALL_THICKNESS - 1) * TILE, y: 24 * TILE, locked: !unlocked };
     }
     state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, backGate, keyDropped: false, bossDefeated: false };
     state.interactables.push(...orbs, altar, gate);
@@ -766,12 +770,58 @@ button:active { transform: translateY(1px); }
   };
 
   const updateMini = () => {
+    const mapW = MAP * zones.length;
+    const mapH = MAP;
+    const cellW = mini.width / mapW;
+    const cellH = mini.height / mapH;
+    const scaleX = mini.width / (MAP * TILE * zones.length);
+    const scaleY = mini.height / (MAP * TILE);
     mctx.clearRect(0, 0, mini.width, mini.height);
     mctx.fillStyle = '#0b0f16';
     mctx.fillRect(0, 0, mini.width, mini.height);
-    const scale = mini.width / (MAP * TILE * zones.length);
-    mctx.fillStyle = '#22c55e';
-    mctx.fillRect(state.player.x * scale - 2, state.player.y * scale - 2, 4, 4);
+    for (let y = 0; y < mapH; y++) {
+      for (let x = 0; x < mapW; x++) {
+        const zoneIndex = Math.floor(x / MAP);
+        const t = tileAt(x % MAP, y, zoneIndex);
+        if (t === 6) mctx.fillStyle = '#7dd3fc';
+        else if (t === 2) mctx.fillStyle = '#1f2937';
+        else if (t === 3) mctx.fillStyle = '#374151';
+        else if (t === 4) mctx.fillStyle = '#1f2d1f';
+        else if (t === 5) mctx.fillStyle = '#2f2f38';
+        else mctx.fillStyle = '#111827';
+        mctx.fillRect(x * cellW, y * cellH, cellW + 0.2, cellH + 0.2);
+      }
+    }
+    const drawDot = (x, y, color, size = 2) => {
+      mctx.fillStyle = color;
+      mctx.fillRect(x * scaleX - size / 2, y * scaleY - size / 2, size, size);
+    };
+    state.enemies.forEach(e => drawDot(e.x, e.y, '#ef4444', 2.2));
+    state.drops.forEach(d => drawDot(d.x, d.y, '#facc15', 2.2));
+    state.interactables.forEach(it => {
+      if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
+      else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
+    });
+    state.companions.forEach(c => drawDot(c.x, c.y, '#22c55e', 2.2));
+    state.npcs.forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.2));
+    if (state.boss) drawDot(state.boss.x, state.boss.y, '#a855f7', 3);
+    drawDot(state.player.x, state.player.y, '#22c55e', 3);
+  };
+
+  const getInteractableTargets = () => {
+    const targets = [];
+    state.interactables.forEach(it => {
+      if (it.type === 'orb' && !it.active) return;
+      if (it.type === 'altar' && !it.active) return;
+      targets.push({ x: it.x, y: it.y, type: it.type });
+    });
+    state.drops.forEach(d => targets.push({ x: d.x, y: d.y, type: 'drop' }));
+    state.npcs.forEach(npc => targets.push({ x: npc.x, y: npc.y, type: 'npc' }));
+    return targets.filter(t => {
+      const dx = t.x - state.player.x;
+      const dy = t.y - state.player.y;
+      return dx * dx + dy * dy < INTERACT_RANGE * INTERACT_RANGE;
+    });
   };
 
   const updatePlayer = (dt) => {
@@ -846,11 +896,12 @@ button:active { transform: translateY(1px); }
     }
   };
 
-  const bossHitCheck = (dmg, x, y) => {
+  // Fix: melee checks previously only used the player center, so bosses could feel unhittable.
+  const bossHitCheck = (dmg, x, y, radius = 16) => {
     if (!state.boss) return false;
     const dx = state.boss.x - x;
     const dy = state.boss.y - y;
-    if (dx * dx + dy * dy < 16 * 16) {
+    if (dx * dx + dy * dy < radius * radius) {
       state.boss.hp -= dmg;
       audio.hit();
       return true;
@@ -889,15 +940,34 @@ button:active { transform: translateY(1px); }
       const dx = p.x - c.x;
       const dy = p.y - c.y;
       const dist = Math.hypot(dx, dy) || 1;
-      if (dist > 30) { c.x += (dx / dist) * 30 * dt; c.y += (dy / dist) * 30 * dt; }
+      if (dist > 36) { c.x += (dx / dist) * 36 * dt; c.y += (dy / dist) * 36 * dt; }
       c.cooldown = Math.max(0, c.cooldown - dt);
-      if (c.cooldown <= 0 && state.enemies.length) {
-        const target = state.enemies[0];
-        target.hp -= c.id === 'elyne' ? 4 : 6;
-        c.cooldown = c.id === 'elyne' ? 1.6 : 1.2;
+      c.healCooldown = Math.max(0, (c.healCooldown || 0) - dt);
+      let nearest = null;
+      let nearestDist = 999999;
+      state.enemies.forEach(e => {
+        const ex = e.x - c.x;
+        const ey = e.y - c.y;
+        const d2 = ex * ex + ey * ey;
+        if (d2 < 160 * 160 && d2 < nearestDist) {
+          nearestDist = d2;
+          nearest = e;
+        }
+      });
+      if (nearest && c.cooldown <= 0) {
+        const dmg = c.id === 'elyne' ? 4 : 6;
+        nearest.hp -= dmg;
+        state.particles.push({ x: nearest.x, y: nearest.y, vx: 0, vy: 0, life: 0.4, color: c.id === 'elyne' ? '#38bdf8' : '#f97316' });
+        c.cooldown = c.id === 'elyne' ? 1.4 : 1.0;
+        if (nearest.hp <= 0) {
+          state.enemies.splice(state.enemies.indexOf(nearest), 1);
+          state.player.xp += 8 + currentZone() * 4;
+          state.gold += 2;
+        }
       }
-      if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.cooldown <= 0) {
-        p.hp = clamp(p.hp + 10, 0, p.hpMax); c.cooldown = 4;
+      if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.healCooldown <= 0) {
+        p.hp = clamp(p.hp + 8, 0, p.hpMax);
+        c.healCooldown = 4;
       }
     });
   };
@@ -925,7 +995,7 @@ button:active { transform: translateY(1px); }
           }
         }
       }
-      bossHitCheck(p.atk, p.x, p.y);
+      bossHitCheck(p.atk, p.x, p.y, range + 4);
       state.projectiles.push({
         x: p.x,
         y: p.y,
@@ -1054,7 +1124,7 @@ button:active { transform: translateY(1px); }
       d.bob += dt * 4;
       const dx = d.x - state.player.x;
       const dy = d.y - state.player.y;
-      if (dx * dx + dy * dy < 22 * 22) {
+      if (dx * dx + dy * dy < PICKUP_RANGE * PICKUP_RANGE) {
         addItem(d.item);
         state.drops.splice(i, 1);
       }
@@ -1099,15 +1169,15 @@ button:active { transform: translateY(1px); }
       const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
       if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
       showToast('La porte s\'ouvre.');
-      state.player.x = (zone + 1) * MAP * TILE + 6 * TILE;
+      state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
       return;
     }
     if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
-      state.player.x = (zone + 1) * MAP * TILE + 6 * TILE;
+      state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
       return;
     }
     if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
-      state.player.x = (zone - 1) * MAP * TILE + (MAP - 6) * TILE;
+      state.player.x = (zone - 1) * MAP * TILE + (MAP - WALL_THICKNESS - 1) * TILE;
       return;
     }
     const nearNpc = state.npcs.find(npc => {
@@ -1210,6 +1280,17 @@ button:active { transform: translateY(1px); }
       else return;
       ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
     });
+    getInteractableTargets().forEach(t => {
+      const sx = t.x - camX;
+      const sy = t.y - camY;
+      ctx.strokeStyle = t.type === 'gate' ? '#38bdf8' : '#facc15';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '10px Cinzel, serif';
+      ctx.fillText('E', sx + 6, sy - 6);
+    });
     state.drops.forEach(d => {
       const bob = Math.sin(d.bob) * 3;
       ctx.fillStyle = d.color || '#e5e7eb';
@@ -1222,6 +1303,10 @@ button:active { transform: translateY(1px); }
     state.companions.forEach(c => {
       ctx.fillStyle = c.id === 'elyne' ? '#60a5fa' : '#f97316';
       ctx.fillRect(c.x - camX - 3, c.y - camY - 3, 6, 6);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(c.x - camX - 6, c.y - camY - 8, 12, 2);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(c.x - camX - 6, c.y - camY - 8, 12 * (c.hp / c.hpMax), 2);
     });
     state.npcs.forEach(npc => {
       ctx.fillStyle = npc.role === 'Marchand' ? '#eab308' : '#9ca3af';
