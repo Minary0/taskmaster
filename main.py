@@ -61,11 +61,22 @@ def ensure_downloader_available() -> str:
 
 def download_video(url: str, output_dir: Path, logger: Callable[[str], None]) -> Path:
     downloader = ensure_downloader_available()
+    ffmpeg_path, _ = ensure_ffmpeg_available()
     output_dir.mkdir(parents=True, exist_ok=True)
     template = str(output_dir / "%(title)s.%(ext)s")
     command = [
         downloader,
         "--no-playlist",
+        "--newline",
+        "--progress",
+        "--ffmpeg-location",
+        str(Path(ffmpeg_path).parent),
+        "-f",
+        "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        "--remux-video",
+        "mp4",
         "--print",
         "after_move:filepath",
         "-o",
@@ -73,16 +84,34 @@ def download_video(url: str, output_dir: Path, logger: Callable[[str], None]) ->
         url,
     ]
     logger("Téléchargement: " + " ".join(command))
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        raise DownloaderError(result.stderr.strip() or "Erreur lors du téléchargement.")
-    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if not lines:
-        raise DownloaderError("Impossible de récupérer le chemin du fichier téléchargé.")
-    downloaded_path = Path(lines[-1])
-    if not downloaded_path.exists():
-        raise DownloaderError("Le fichier téléchargé est introuvable.")
-    return downloaded_path
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    lines: List[str] = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        line = line.strip()
+        if line:
+            lines.append(line)
+            logger(line)
+    returncode = proc.wait()
+    if returncode != 0:
+        raise DownloaderError("Erreur lors du téléchargement (voir logs).")
+    for line in reversed(lines):
+        candidate = Path(line)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    candidates = sorted(
+        output_dir.glob("*.mp4"), key=lambda x: x.stat().st_mtime, reverse=True
+    )
+    if candidates:
+        return candidates[0]
+    raise DownloaderError("Téléchargement terminé mais fichier final introuvable.")
 
 
 def get_duration_seconds(input_path: Path) -> float:
@@ -124,12 +153,14 @@ def build_ffmpeg_command(
             f"{start}",
             "-t",
             f"{duration}",
-            "-c",
+            "-c:v",
             "copy",
-            "-avoid_negative_ts",
-            "1",
-            "-fflags",
-            "+genpts",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
     return [
