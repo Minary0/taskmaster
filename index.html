@@ -1969,8 +1969,8 @@ button:active { transform: translateY(1px); }
     if (gate) {
       if (gate.direction === 'forward' && flow.keyDropped && flow.gate.locked) {
         flow.gate.locked = false;
-        const nextFlow = state.zoneFlow[`zone-${zone + 1}`];
-        if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
+        initZoneFlow(zone + 1);
+        syncBackGate(zone + 1);
         showToast('La porte s\'ouvre.');
         return;
       }
@@ -2731,25 +2731,26 @@ button:active { transform: translateY(1px); }
 
   document.addEventListener('keydown', (e) => {
     if (state.dead) return;
-    if (e.key === 'Escape' && state.spellWheel.open) {
+    const key = e.key.toLowerCase();
+    if (key === 'escape' && state.spellWheel.open) {
       closeSpellWheel();
       return;
     }
-    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
-    if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
-    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
-    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = true;
-    if (e.key === ' ') keys.attack = true;
-    if (e.key.toLowerCase() === 'e') keys.interact = true;
-    if (e.key === 'Shift') keys.dash = true;
-    if (e.key === 'i') { openPanel('inventory'); renderInventory(); }
-    if (e.key === 'c') { openPanel('character'); renderCharacter(); }
-    if (e.key === 'q') { openPanel('journal'); renderJournal(); }
-    if (e.key.toLowerCase() === 'r') openSpellWheel();
-    if (e.key === '+' || e.key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
-    if (e.key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
-    if (e.key.toLowerCase() === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
-    if (e.key.toLowerCase() === 'h') {
+    if (key === 'w' || key === 'z' || key === 'arrowup') keys.up = true;
+    if (key === 's' || key === 'arrowdown') keys.down = true;
+    if (key === 'a' || key === 'q' || key === 'arrowleft') keys.left = true;
+    if (key === 'd' || key === 'arrowright') keys.right = true;
+    if (key === ' ') keys.attack = true;
+    if (key === 'e') keys.interact = true;
+    if (key === 'shift') keys.dash = true;
+    if (key === 'i') { openPanel('inventory'); renderInventory(); }
+    if (key === 'c') { openPanel('character'); renderCharacter(); }
+    if (key === 'q') { openPanel('journal'); renderJournal(); }
+    if (key === 'r') openSpellWheel();
+    if (key === '+' || key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
+    if (key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
+    if (key === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
+    if (key === 'h') {
       const idx = state.player.inv.findIndex(it => it.type === 'potion');
       if (idx >= 0) {
         state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
@@ -2757,7 +2758,7 @@ button:active { transform: translateY(1px); }
         showToast('Potion utilisée');
       }
     }
-    if (e.key.toLowerCase() === 'm') {
+    if (key === 'm') {
       const idx = state.player.inv.findIndex(it => it.type === 'mana_potion');
       if (idx >= 0) {
         state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
@@ -2765,17 +2766,18 @@ button:active { transform: translateY(1px); }
         showToast('Mana restauré');
       }
     }
-    if (e.key === 'Escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
+    if (key === 'escape') { state.paused = !state.paused; state.paused ? openPanel('pauseMenu') : hideAll(); }
   });
 
   document.addEventListener('keyup', (e) => {
-    if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = false;
-    if (e.key === 's' || e.key === 'ArrowDown') keys.down = false;
-    if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = false;
-    if (e.key === 'd' || e.key === 'ArrowRight') keys.right = false;
-    if (e.key === ' ') keys.attack = false;
-    if (e.key.toLowerCase() === 'e') keys.interact = false;
-    if (e.key === 'Shift') keys.dash = false;
+    const key = e.key.toLowerCase();
+    if (key === 'w' || key === 'z' || key === 'arrowup') keys.up = false;
+    if (key === 's' || key === 'arrowdown') keys.down = false;
+    if (key === 'a' || key === 'q' || key === 'arrowleft') keys.left = false;
+    if (key === 'd' || key === 'arrowright') keys.right = false;
+    if (key === ' ') keys.attack = false;
+    if (key === 'e') keys.interact = false;
+    if (key === 'shift') keys.dash = false;
   });
 
   window.addEventListener('mousemove', (e) => {
