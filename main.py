@@ -251,6 +251,9 @@ class VideoSplitterApp(tk.Tk):
         self.geometry("820x640")
         self.resizable(True, True)
 
+        self.style = ttk.Style(self)
+        self.dark_mode = tk.BooleanVar(value=False)
+
         self.event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self.worker_thread: threading.Thread | None = None
         self.output_paths: list[Path] = []
@@ -258,6 +261,8 @@ class VideoSplitterApp(tk.Tk):
         self.source_path: Path | None = None
 
         self._build_ui()
+        self._configure_styles()
+        self._apply_theme()
         self.after(150, self._process_queue)
 
     def _build_ui(self) -> None:
@@ -295,6 +300,8 @@ class VideoSplitterApp(tk.Tk):
         ttk.Entry(duration_frame, textvariable=self.seconds_var, width=6).grid(
             row=0, column=3, padx=6, pady=6
         )
+        self.minutes_var.trace_add("write", lambda *_: self._update_segments_label())
+        self.seconds_var.trace_add("write", lambda *_: self._update_segments_label())
 
         options_frame = ttk.LabelFrame(main, text="Options")
         options_frame.pack(fill=tk.X, pady=6)
@@ -325,6 +332,13 @@ class VideoSplitterApp(tk.Tk):
             width=8,
             state="readonly",
         ).grid(row=1, column=1, padx=6, pady=6, sticky=tk.W)
+
+        ttk.Checkbutton(
+            options_frame,
+            text="Mode sombre",
+            variable=self.dark_mode,
+            command=self._apply_theme,
+        ).grid(row=1, column=2, padx=6, pady=6, sticky=tk.W)
 
         output_frame = ttk.LabelFrame(main, text="Dossier de sortie")
         output_frame.pack(fill=tk.X, pady=6)
@@ -396,6 +410,82 @@ class VideoSplitterApp(tk.Tk):
     def _progress(self, current: int, total: int) -> None:
         self.event_queue.put(("progress", (current, total)))
 
+    def _set_info(self, duration: float, segments: int) -> None:
+        self.event_queue.put(("set_info", (duration, segments)))
+
+    def _configure_styles(self) -> None:
+        self.style.theme_use("default")
+        self.style.configure("Light.TFrame", background="#f5f5f5")
+        self.style.configure("Light.TLabelFrame", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TLabelFrame.Label", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TLabel", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TButton", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TCheckbutton", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TRadiobutton", background="#f5f5f5", foreground="#111111")
+        self.style.configure("Light.TEntry", fieldbackground="#ffffff", foreground="#111111")
+        self.style.configure("Light.TCombobox", fieldbackground="#ffffff", foreground="#111111")
+        self.style.configure("Light.TProgressbar", background="#4a90e2")
+
+        self.style.configure("Dark.TFrame", background="#1f1f1f")
+        self.style.configure("Dark.TLabelFrame", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TLabelFrame.Label", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TLabel", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TButton", background="#2b2b2b", foreground="#e6e6e6")
+        self.style.configure("Dark.TCheckbutton", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TRadiobutton", background="#1f1f1f", foreground="#e6e6e6")
+        self.style.configure("Dark.TEntry", fieldbackground="#2b2b2b", foreground="#e6e6e6")
+        self.style.configure("Dark.TCombobox", fieldbackground="#2b2b2b", foreground="#e6e6e6")
+        self.style.configure("Dark.TProgressbar", background="#6bb8ff")
+
+    def _apply_theme(self) -> None:
+        theme_prefix = "Dark" if self.dark_mode.get() else "Light"
+        self.configure(background=self.style.lookup(f"{theme_prefix}.TFrame", "background"))
+        self._apply_theme_to_widgets(self, theme_prefix)
+        log_bg = "#2b2b2b" if self.dark_mode.get() else "#ffffff"
+        log_fg = "#e6e6e6" if self.dark_mode.get() else "#111111"
+        self.log_text.config(
+            bg=log_bg,
+            fg=log_fg,
+            insertbackground=log_fg,
+            selectbackground="#4a90e2",
+        )
+
+    def _apply_theme_to_widgets(self, parent: tk.Misc, theme_prefix: str) -> None:
+        for child in parent.winfo_children():
+            if isinstance(child, ttk.Frame):
+                child.configure(style=f"{theme_prefix}.TFrame")
+            elif isinstance(child, ttk.LabelFrame):
+                child.configure(style=f"{theme_prefix}.TLabelFrame")
+            elif isinstance(child, ttk.Label):
+                child.configure(style=f"{theme_prefix}.TLabel")
+            elif isinstance(child, ttk.Button):
+                child.configure(style=f"{theme_prefix}.TButton")
+            elif isinstance(child, ttk.Checkbutton):
+                child.configure(style=f"{theme_prefix}.TCheckbutton")
+            elif isinstance(child, ttk.Radiobutton):
+                child.configure(style=f"{theme_prefix}.TRadiobutton")
+            elif isinstance(child, ttk.Entry):
+                child.configure(style=f"{theme_prefix}.TEntry")
+            elif isinstance(child, ttk.Combobox):
+                child.configure(style=f"{theme_prefix}.TCombobox")
+            elif isinstance(child, ttk.Progressbar):
+                child.configure(style=f"{theme_prefix}.TProgressbar")
+            self._apply_theme_to_widgets(child, theme_prefix)
+
+    def _update_segments_label(self) -> None:
+        if self.total_duration is None:
+            return
+        try:
+            segment_duration = parse_duration(
+                self.minutes_var.get().strip(),
+                self.seconds_var.get().strip(),
+            )
+        except ValueError:
+            self.segment_label.config(text="Segments estimés: -")
+            return
+        segments = estimate_segments(self.total_duration, segment_duration)
+        self.segment_label.config(text=f"Segments estimés: {segments}")
+
     def _analyze(self) -> None:
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showwarning("Analyse", "Une opération est déjà en cours.")
@@ -422,6 +512,12 @@ class VideoSplitterApp(tk.Tk):
                 else:
                     self.source_path = Path(video_path)
                 duration = get_duration_seconds(self.source_path)
+                segment_duration = parse_duration(
+                    self.minutes_var.get().strip(),
+                    self.seconds_var.get().strip(),
+                )
+                segments = estimate_segments(duration, segment_duration)
+                self._set_info(duration, segments)
             except (FFMpegError, DownloaderError, FileNotFoundError) as exc:
                 self.event_queue.put(("error", str(exc)))
                 return
@@ -468,6 +564,13 @@ class VideoSplitterApp(tk.Tk):
                     self.source_path = download_video(url, Path(output_dir), self._log)
                 elif self.source_path is None:
                     self.source_path = Path(video_path)
+                duration = get_duration_seconds(self.source_path)
+                segment_duration = parse_duration(
+                    self.minutes_var.get().strip(),
+                    self.seconds_var.get().strip(),
+                )
+                segments = estimate_segments(duration, segment_duration)
+                self._set_info(duration, segments)
                 self.output_paths = list(
                     split_video(
                         self.source_path,
@@ -548,6 +651,13 @@ class VideoSplitterApp(tk.Tk):
                         self.segment_label.config(text=f"Segments estimés: {segments}")
                     except ValueError:
                         self.segment_label.config(text="Segments estimés: -")
+                elif event == "set_info":
+                    duration, segments = payload
+                    self.total_duration = float(duration)
+                    self.duration_label.config(
+                        text=f"Durée totale: {format_seconds(self.total_duration)}"
+                    )
+                    self.segment_label.config(text=f"Segments estimés: {segments}")
                 elif event == "done":
                     self._log("Découpage terminé.")
                     self.open_folder_button.config(state=tk.NORMAL)

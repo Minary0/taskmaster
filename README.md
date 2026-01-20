@@ -12,6 +12,7 @@ Application de bureau multiplateforme pour découper une vidéo en segments de d
 - Choix du format de sortie (mp4 par défaut).
 - Barre de progression, ETA approximatif via l'avancement, et log des commandes FFmpeg.
 - Gestion d'erreurs (FFmpeg absent, format non supporté, permissions, etc.).
+- Mode sombre (thème clair/sombre).
 
 ## Prérequis
 
