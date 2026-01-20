@@ -1019,20 +1019,30 @@ button:active { transform: translateY(1px); }
     });
   };
 
+  const ENEMY_TYPES = [
+    { id: 'dash', name: 'Vermine', speed: 70, hp: 0.7, atk: 1, behavior: 'dash' },
+    { id: 'sniper', name: 'Guetteur', speed: 45, hp: 0.8, atk: 1, behavior: 'ranged' },
+    { id: 'tank', name: 'Chevalier Creux', speed: 30, hp: 1.6, atk: 1.4, behavior: 'tank' },
+    { id: 'caster', name: 'Mage du Voile', speed: 35, hp: 1.0, atk: 1.2, behavior: 'caster' },
+    { id: 'flying', name: 'Bête Brumeuse', speed: 60, hp: 1.0, atk: 1.1, behavior: 'flying' }
+  ];
+
   const createEnemy = (zoneIndex, x, y) => {
-    const types = ['vermine', 'goule', 'chevalier creux', 'bête brumeuse', 'mage du voile'];
-    const t = types[Math.floor(Math.random() * types.length)];
+    const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    const hpBase = 50 + zoneIndex * 25;
     return {
-      type: t,
+      type: type.name,
+      kind: type.id,
       x, y,
       vx: 0,
       vy: 0,
-      hp: 50 + zoneIndex * 25,
-      hpMax: 50 + zoneIndex * 25,
-      atk: 6 + zoneIndex * 3,
+      hp: Math.floor(hpBase * type.hp),
+      hpMax: Math.floor(hpBase * type.hp),
+      atk: Math.floor((6 + zoneIndex * 3) * type.atk),
       def: 1 + zoneIndex,
       state: 'patrol',
       cooldown: 0,
+      dashCooldown: 0,
       rare: Math.random() > 0.9 ? 'elite' : 'common'
     };
   };
@@ -1211,15 +1221,37 @@ button:active { transform: translateY(1px); }
       const dy = p.y - e.y;
       const dist2 = dx * dx + dy * dy;
       const slow = e.slow > 0 ? 0.5 : 1;
-      if (dist2 < 180 * 180) {
+      if (dist2 < 220 * 220) {
         const dist = Math.sqrt(dist2) || 1;
-        e.vx = (dx / dist) * 45 * dt * slow;
-        e.vy = (dy / dist) * 45 * dt * slow;
+        const speed = (e.kind === 'tank' ? 25 : e.kind === 'sniper' ? 35 : 45) * slow;
+        e.vx = (dx / dist) * speed * dt;
+        e.vy = (dy / dist) * speed * dt;
         const nx = e.x + e.vx;
         const ny = e.y + e.vy;
-        if (!isSolidAt(nx, e.y)) e.x = nx;
-        if (!isSolidAt(e.x, ny)) e.y = ny;
-        if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
+        if (e.kind === 'flying' || !isSolidAt(nx, e.y)) e.x = nx;
+        if (e.kind === 'flying' || !isSolidAt(e.x, ny)) e.y = ny;
+        if (e.kind === 'dash' && e.dashCooldown <= 0 && dist2 < 140 * 140) {
+          e.x += (dx / dist) * 30;
+          e.y += (dy / dist) * 30;
+          e.dashCooldown = 2.0;
+        }
+        if ((e.kind === 'sniper' || e.kind === 'caster') && e.cooldown <= 0 && dist2 < 200 * 200) {
+          const angle = Math.atan2(dy, dx);
+          state.projectiles.push({
+            x: e.x,
+            y: e.y,
+            vx: Math.cos(angle) * 160,
+            vy: Math.sin(angle) * 160,
+            life: 1.6,
+            dmg: Math.max(3, e.atk - 2),
+            size: 3,
+            color: e.kind === 'caster' ? '#a855f7' : '#ef4444',
+            shape: 'orb',
+            source: 'enemy'
+          });
+          e.cooldown = e.kind === 'caster' ? 2.0 : 1.2;
+        }
+        if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0 && e.kind !== 'sniper') {
           const dmg = Math.max(1, e.atk - p.def);
           state.lastDamageSource = `Ennemi (${e.type})`;
           p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
@@ -1230,11 +1262,12 @@ button:active { transform: translateY(1px); }
         e.vy = Math.cos(state.time + i) * 10 * dt * slow;
         const nx = e.x + e.vx;
         const ny = e.y + e.vy;
-        if (!isSolidAt(nx, e.y)) e.x = nx;
-        if (!isSolidAt(e.x, ny)) e.y = ny;
+        if (e.kind === 'flying' || !isSolidAt(nx, e.y)) e.x = nx;
+        if (e.kind === 'flying' || !isSolidAt(e.x, ny)) e.y = ny;
       }
       e.slow = Math.max(0, (e.slow || 0) - dt);
       e.cooldown = Math.max(0, e.cooldown - dt);
+      e.dashCooldown = Math.max(0, e.dashCooldown - dt);
     }
   };
 
@@ -1506,6 +1539,19 @@ button:active { transform: translateY(1px); }
       }
       if (bossHitCheck(pr.dmg, pr.x, pr.y)) {
         pr.life = 0;
+      }
+      if (pr.source === 'enemy') {
+        const dxp = state.player.x - pr.x;
+        const dyp = state.player.y - pr.y;
+        if (dxp * dxp + dyp * dyp < 16 * 16 && state.player.iFrames <= 0) {
+          state.lastDamageSource = 'Projectile ennemi';
+          state.player.hp -= pr.dmg;
+          state.player.iFrames = 0.6;
+          pr.life = 0;
+          if (state.player.hp <= 0) handleDeath();
+        }
+        if (pr.life <= 0) state.projectiles.splice(i, 1);
+        continue;
       }
       for (let j = state.enemies.length - 1; j >= 0; j--) {
         const e = state.enemies[j];
@@ -2318,6 +2364,11 @@ button:active { transform: translateY(1px); }
   });
 
   window.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) / rect.width * W;
+    state.mouse.y = (e.clientY - rect.top) / rect.height * H;
+  });
+  window.addEventListener('pointermove', (e) => {
     const rect = canvas.getBoundingClientRect();
     state.mouse.x = (e.clientX - rect.left) / rect.width * W;
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
