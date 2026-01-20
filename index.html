@@ -217,6 +217,25 @@ button:active { transform: translateY(1px); }
     </div>
   </div>
 
+  <div id="gameOver" class="overlay">
+    <div class="panel" style="text-align:center;">
+      <h2>GAME OVER</h2>
+      <div class="small">Progression histoire: <strong id="gameOverProgress">0%</strong> <span id="gameOverProgressNote"></span></div>
+      <div class="small" id="gameOverZone">Zone</div>
+      <div class="list" style="margin-top:10px;">
+        <div class="item">Kills: <strong id="gameOverKills">0</strong></div>
+        <div class="item">Loot ramassé: <strong id="gameOverLoot">0</strong></div>
+        <div class="item">Temps de jeu: <strong id="gameOverTime">00:00</strong></div>
+        <div class="item">Exploration: <strong id="gameOverExplore">0%</strong> <span class="small" id="gameOverExploreNote"></span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <button id="gameOverRestart">Recommencer</button>
+        <button id="gameOverContinue">Continuer depuis la dernière porte</button>
+        <button id="gameOverMenu">Menu principal</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
   <div id="mobile">
@@ -429,7 +448,9 @@ button:active { transform: translateY(1px); }
   const state = {
     running: false,
     paused: false,
+    dead: false,
     time: 0,
+    runTime: 0,
     seed: Math.floor(Math.random() * 1e9),
     zoneCorruption: [1, 1, 1, 1, 1],
     clearedZones: 0,
@@ -450,7 +471,10 @@ button:active { transform: translateY(1px); }
     npcs: [],
     bestProgress: 0,
     spawnTimer: 0,
-    mouse: { x: W / 2, y: H / 2 }
+    mouse: { x: W / 2, y: H / 2 },
+    stats: { kills: 0, loot: 0 },
+    explored: {},
+    lastCheckpoint: null
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -517,6 +541,113 @@ button:active { transform: translateY(1px); }
     el.classList.add('show');
     clearTimeout(el._t);
     el._t = setTimeout(() => el.classList.remove('show'), 1400);
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const markExplored = () => {
+    const zone = currentZone();
+    if (!state.explored[zone]) state.explored[zone] = new Set();
+    const tx = Math.floor((state.player.x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(state.player.y / TILE);
+    state.explored[zone].add(`${tx},${ty}`);
+  };
+
+  const walkableTotal = (zone) => {
+    const key = `zone-${zone}-walkable`;
+    if (!state.explored[key]) {
+      let total = 0;
+      for (let y = 0; y < MAP; y++) {
+        for (let x = 0; x < MAP; x++) {
+          if (!isSolid(tileAt(x, y, zone))) total += 1;
+        }
+      }
+      state.explored[key] = total;
+    }
+    return state.explored[key];
+  };
+
+  const explorationPercent = (zone) => {
+    const seen = state.explored[zone] ? state.explored[zone].size : 0;
+    const total = walkableTotal(zone) || 1;
+    return Math.min(100, Math.round((seen / total) * 100));
+  };
+
+  const updateGameOverStats = () => {
+    const zone = currentZone();
+    const progress = Math.round(((zone + 1) / zones.length) * 100);
+    document.getElementById('gameOverProgress').textContent = `${progress}%`;
+    document.getElementById('gameOverProgressNote').textContent = `(zones traversées: ${zone + 1}/${zones.length})`;
+    document.getElementById('gameOverZone').textContent = `Zone ${zone + 1}/${zones.length} – ${zones[zone].name}`;
+    document.getElementById('gameOverKills').textContent = state.stats.kills;
+    document.getElementById('gameOverLoot').textContent = state.stats.loot;
+    document.getElementById('gameOverTime').textContent = formatTime(state.runTime);
+    document.getElementById('gameOverExplore').textContent = `${explorationPercent(zone)}%`;
+    document.getElementById('gameOverExploreNote').textContent = '(tiles walkable vus / total zone courante)';
+  };
+
+  // NEW: game over flow without page reload.
+  const handleDeath = () => {
+    if (state.dead) return;
+    state.dead = true;
+    updateGameOverStats();
+    openPanel('gameOver', false);
+    state.paused = true;
+  };
+
+  const continueFromCheckpoint = () => {
+    state.dead = false;
+    state.paused = false;
+    if (state.lastCheckpoint) {
+      state.player.x = state.lastCheckpoint.x;
+      state.player.y = state.lastCheckpoint.y;
+    } else {
+      state.player.x = 30 * TILE;
+      state.player.y = 30 * TILE;
+    }
+    state.player.hp = state.player.hpMax;
+    hideAll();
+  };
+
+  const resetRun = () => {
+    Object.assign(state, {
+      running: false,
+      paused: false,
+      dead: false,
+      time: 0,
+      runTime: 0,
+      seed: Math.floor(Math.random() * 1e9),
+      zoneCorruption: [1, 1, 1, 1, 1],
+      clearedZones: 0,
+      player: null,
+      companions: [],
+      enemies: [],
+      projectiles: [],
+      boss: null,
+      interactables: [],
+      zoneFlow: {},
+      drops: [],
+      particles: [],
+      quests: {},
+      loreFound: {},
+      materials: 0,
+      gold: 0,
+      corruptionAbsorbed: 0,
+      npcs: [],
+      bestProgress: 0,
+      spawnTimer: 0,
+      mouse: { x: W / 2, y: H / 2 },
+      stats: { kills: 0, loot: 0 },
+      explored: {},
+      lastCheckpoint: null
+    });
+    buildNpcInstances();
+    hideAll();
+    document.getElementById('menu').style.display = 'flex';
   };
 
   const audio = {
@@ -669,7 +800,14 @@ button:active { transform: translateY(1px); }
       const unlocked = prevFlow ? !prevFlow.gate.locked : false;
       backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + (WALL_THICKNESS - 1) * TILE, y: 24 * TILE, locked: !unlocked };
     }
-    state.zoneFlow[key] = { orbsDestroyed: 0, altar, gate, backGate, keyDropped: false, bossDefeated: false };
+    state.zoneFlow[key] = {
+      orbsDestroyed: 0,
+      altar,
+      gate,
+      backGate,
+      keyDropped: false,
+      bossState: { spawned: false, alive: false, defeated: false }
+    };
     state.interactables.push(...orbs, altar, gate);
     if (backGate) state.interactables.push(backGate);
   };
@@ -695,6 +833,7 @@ button:active { transform: translateY(1px); }
   };
 
   const addItem = (item) => {
+    state.stats.loot += 1;
     if (item.type === 'potion') {
       state.player.potions = clamp(state.player.potions + 1, 0, 9);
       showToast('Potion +1');
@@ -802,6 +941,14 @@ button:active { transform: translateY(1px); }
       if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
       else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
     });
+    for (let z = 0; z < zones.length; z++) {
+      const gateX = z * MAP * TILE + (MAP - WALL_THICKNESS) * TILE;
+      drawDot(gateX, 24 * TILE, '#38bdf8', 2.6);
+      if (z > 0) {
+        const backGateX = z * MAP * TILE + (WALL_THICKNESS - 1) * TILE;
+        drawDot(backGateX, 24 * TILE, '#38bdf8', 2.6);
+      }
+    }
     state.companions.forEach(c => drawDot(c.x, c.y, '#22c55e', 2.2));
     state.npcs.forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.2));
     if (state.boss) drawDot(state.boss.x, state.boss.y, '#a855f7', 3);
@@ -862,6 +1009,7 @@ button:active { transform: translateY(1px); }
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.skillCooldown = Math.max(0, p.skillCooldown - dt);
     p.iFrames = Math.max(0, p.iFrames - dt);
+    markExplored();
   };
 
   const updateEnemies = (dt) => {
@@ -882,7 +1030,7 @@ button:active { transform: translateY(1px); }
         if (dist2 < 20 * 20 && e.cooldown <= 0 && p.iFrames <= 0) {
           const dmg = Math.max(1, e.atk - p.def);
           p.hp -= dmg; p.iFrames = 0.6; e.cooldown = 1.2;
-          if (p.hp <= 0) { p.hp = p.hpMax; p.x = 30 * TILE; p.y = 30 * TILE; showToast('La brume t\'a rejeté...'); }
+          if (p.hp <= 0) { handleDeath(); }
         }
       } else {
         e.vx = Math.sin(state.time + i) * 10 * dt;
@@ -922,12 +1070,17 @@ button:active { transform: translateY(1px); }
     if (!isSolidAt(b.x, ny)) b.y = ny;
     if (dist < 22 && p.iFrames <= 0) {
       p.hp -= 12; p.iFrames = 0.8;
+      if (p.hp <= 0) handleDeath();
     }
     b.phase = b.hp < b.hpMax * 0.66 ? 2 : b.hp < b.hpMax * 0.33 ? 3 : 1;
     if (b.hp <= 0) {
       const zone = currentZone();
       const flow = state.zoneFlow[`zone-${zone}`];
-      if (flow) flow.keyDropped = true;
+      if (flow) {
+        flow.keyDropped = true;
+        flow.bossState.alive = false;
+        flow.bossState.defeated = true;
+      }
       showToast('Clé obtenue.');
       addItem(uniqueItems[Math.min(zone, uniqueItems.length - 1)]);
       state.boss = null;
@@ -955,15 +1108,21 @@ button:active { transform: translateY(1px); }
         }
       });
       if (nearest && c.cooldown <= 0) {
-        const dmg = c.id === 'elyne' ? 4 : 6;
-        nearest.hp -= dmg;
-        state.particles.push({ x: nearest.x, y: nearest.y, vx: 0, vy: 0, life: 0.4, color: c.id === 'elyne' ? '#38bdf8' : '#f97316' });
-        c.cooldown = c.id === 'elyne' ? 1.4 : 1.0;
-        if (nearest.hp <= 0) {
-          state.enemies.splice(state.enemies.indexOf(nearest), 1);
-          state.player.xp += 8 + currentZone() * 4;
-          state.gold += 2;
-        }
+        const dmg = c.id === 'elyne' ? 3 : 5;
+        const angle = Math.atan2(nearest.y - c.y, nearest.x - c.x);
+        state.projectiles.push({
+          x: c.x,
+          y: c.y,
+          vx: Math.cos(angle) * 200,
+          vy: Math.sin(angle) * 200,
+          life: 1.0,
+          dmg,
+          size: 3,
+          color: c.id === 'elyne' ? '#38bdf8' : '#f97316',
+          shape: 'orb',
+          source: 'ally'
+        });
+        c.cooldown = c.id === 'elyne' ? 1.3 : 0.9;
       }
       if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.healCooldown <= 0) {
         p.hp = clamp(p.hp + 8, 0, p.hpMax);
@@ -988,6 +1147,7 @@ button:active { transform: translateY(1px); }
           audio.hit();
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
+            state.stats.kills += 1;
             state.player.xp += 10 + currentZone() * 5;
             state.gold += 3;
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
@@ -1096,6 +1256,7 @@ button:active { transform: translateY(1px); }
           pr.life = 0;
           if (e.hp <= 0) {
             state.enemies.splice(j, 1);
+            state.stats.kills += 1;
             state.player.xp += 10 + currentZone() * 5;
             state.gold += 3;
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
@@ -1158,10 +1319,15 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE && !state.boss) {
-      state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
-      audio.menu();
-      showToast('Le Seigneur émerge...');
+    if (flow.altar.active && Math.hypot(flow.altar.x - state.player.x, flow.altar.y - state.player.y) < INTERACT_RANGE) {
+      // FIX: boss spawns only once per zone until defeated.
+      if (!flow.bossState.alive && !flow.bossState.defeated && !state.boss) {
+        state.boss = { x: flow.altar.x + 50, y: flow.altar.y - 40, hp: 250 + zone * 80, hpMax: 250 + zone * 80, phase: 1 };
+        flow.bossState.spawned = true;
+        flow.bossState.alive = true;
+        audio.menu();
+        showToast('Le Seigneur émerge...');
+      }
       return;
     }
     if (flow.keyDropped && flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
@@ -1170,14 +1336,17 @@ button:active { transform: translateY(1px); }
       if (nextFlow && nextFlow.backGate) nextFlow.backGate.locked = false;
       showToast('La porte s\'ouvre.');
       state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
       return;
     }
     if (!flow.gate.locked && Math.hypot(flow.gate.x - state.player.x, flow.gate.y - state.player.y) < INTERACT_RANGE) {
       state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 1) * TILE;
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
       return;
     }
     if (flow.backGate && !flow.backGate.locked && Math.hypot(flow.backGate.x - state.player.x, flow.backGate.y - state.player.y) < INTERACT_RANGE) {
       state.player.x = (zone - 1) * MAP * TILE + (MAP - WALL_THICKNESS - 1) * TILE;
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
       return;
     }
     const nearNpc = state.npcs.find(npc => {
@@ -1218,6 +1387,7 @@ button:active { transform: translateY(1px); }
     if (!state.running || state.paused) { requestAnimationFrame(update); return; }
     const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
     state.time = ts;
+    state.runTime += dt;
     initZoneFlow(currentZone());
     updatePlayer(dt);
     updateEnemies(dt);
@@ -1365,7 +1535,7 @@ button:active { transform: translateY(1px); }
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return false;
     Object.assign(state, JSON.parse(data));
-    state.running = true; state.paused = false;
+    state.running = true; state.paused = false; state.dead = false;
     if (state.player && state.player.classKey && classes[state.player.classKey]) {
       const base = classes[state.player.classKey];
       state.player.ranged = true;
@@ -1374,6 +1544,19 @@ button:active { transform: translateY(1px); }
       state.player.projectileColor = base.projectileColor;
       state.player.projectileSize = base.projectileSize;
       state.player.weapon = base.weapon;
+    }
+    if (!state.stats) state.stats = { kills: 0, loot: 0 };
+    if (!state.explored) state.explored = {};
+    Object.values(state.zoneFlow || {}).forEach(flow => {
+      if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
+    });
+    if (state.boss) {
+      const zone = currentZone();
+      const flow = state.zoneFlow[`zone-${zone}`];
+      if (flow) {
+        flow.bossState.spawned = true;
+        flow.bossState.alive = true;
+      }
     }
     if (!state.npcs || !state.npcs.length) buildNpcInstances();
     audio.init();
@@ -1391,6 +1574,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('journal').style.display = 'none';
     document.getElementById('options').style.display = 'none';
     document.getElementById('credits').style.display = 'none';
+    document.getElementById('gameOver').style.display = 'none';
     document.getElementById('dialogue').style.display = 'none';
     document.getElementById('shop').style.display = 'none';
   };
@@ -1584,10 +1768,19 @@ button:active { transform: translateY(1px); }
     state.player = createPlayer(clsKey);
     state.running = true;
     state.paused = false;
+    state.dead = false;
+    state.runTime = 0;
+    state.stats = { kills: 0, loot: 0 };
+    state.explored = {};
+    state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: 0 };
     state.enemies.length = 0;
     state.companions.length = 0;
+    state.projectiles.length = 0;
+    state.boss = null;
     state.particles.length = 0;
     state.drops.length = 0;
+    state.interactables.length = 0;
+    state.zoneFlow = {};
     state.zoneCorruption = [1, 1, 1, 1, 1];
     state.clearedZones = 0;
     state.materials = 0;
@@ -1626,6 +1819,9 @@ button:active { transform: translateY(1px); }
   document.getElementById('saveBtn').addEventListener('click', saveGame);
   document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
   document.getElementById('quitBtn').addEventListener('click', () => { state.paused = false; openPanel('menu'); });
+  document.getElementById('gameOverRestart').addEventListener('click', () => resetRun());
+  document.getElementById('gameOverContinue').addEventListener('click', () => continueFromCheckpoint());
+  document.getElementById('gameOverMenu').addEventListener('click', () => { state.paused = false; state.running = false; state.dead = false; openPanel('menu'); });
 
   document.getElementById('toggleShake').addEventListener('click', () => { settings.shake = !settings.shake; applySettings(); saveSettings(); });
   document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
@@ -1660,6 +1856,7 @@ button:active { transform: translateY(1px); }
   });
 
   document.addEventListener('keydown', (e) => {
+    if (state.dead) return;
     if (e.key === 'w' || e.key === 'z' || e.key === 'ArrowUp') keys.up = true;
     if (e.key === 's' || e.key === 'ArrowDown') keys.down = true;
     if (e.key === 'a' || e.key === 'q' || e.key === 'ArrowLeft') keys.left = true;
@@ -1692,13 +1889,13 @@ button:active { transform: translateY(1px); }
     state.mouse.x = (e.clientX - rect.left) / rect.width * W;
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
   });
-  canvas.addEventListener('pointerdown', () => { if (state.running) doAttack(); });
+  canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
   window.addEventListener('blur', () => state.paused = true);
 
   setInterval(() => {
-    if (!state.running) return;
+    if (!state.running || state.dead) return;
     if (keys.attack) doAttack();
     if (keys.interact) onInteract();
     if (keys.dash) keys.dash = false;
@@ -1727,6 +1924,7 @@ button:active { transform: translateY(1px); }
   document.querySelectorAll('.mobBtn').forEach(btn => {
     btn.addEventListener('click', () => {
       const action = btn.dataset.act;
+      if (state.dead) return;
       if (action === 'attack') doAttack();
       if (action === 'interact') onInteract();
       if (action === 'inventory') { openPanel('inventory'); renderInventory(); }
