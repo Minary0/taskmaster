@@ -19,16 +19,37 @@ class FFMpegError(RuntimeError):
     pass
 
 
-def ensure_ffmpeg_available() -> None:
-    if not shutil.which("ffmpeg"):
-        raise FileNotFoundError("FFmpeg est introuvable dans le PATH.")
-    if not shutil.which("ffprobe"):
-        raise FileNotFoundError("FFprobe est introuvable dans le PATH.")
+def ensure_ffmpeg_available() -> tuple[str, str]:
+    """Return ffmpeg/ffprobe paths from PATH or local ./bin."""
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+
+    if ffmpeg and ffprobe:
+        return ffmpeg, ffprobe
+
+    base_dir = Path(__file__).resolve().parent
+    bin_dir = base_dir / "bin"
+
+    if os.name == "nt":
+        local_ffmpeg = bin_dir / "ffmpeg.exe"
+        local_ffprobe = bin_dir / "ffprobe.exe"
+    else:
+        local_ffmpeg = bin_dir / "ffmpeg"
+        local_ffprobe = bin_dir / "ffprobe"
+
+    if local_ffmpeg.exists() and local_ffprobe.exists():
+        return str(local_ffmpeg), str(local_ffprobe)
+
+    raise FileNotFoundError(
+        "FFmpeg/FFprobe introuvables. Installe FFmpeg et ajoute-le au PATH, "
+        "ou place ffmpeg(.exe) et ffprobe(.exe) dans le dossier ./bin à côté de main.py."
+    )
 
 
 def get_duration_seconds(input_path: Path) -> float:
+    _, ffprobe_path = ensure_ffmpeg_available()
     command = [
-        "ffprobe",
+        ffprobe_path,
         "-v",
         "error",
         "-show_entries",
@@ -52,10 +73,11 @@ def build_ffmpeg_command(
     start: float,
     duration: float,
     mode: str,
+    ffmpeg_path: str,
 ) -> list[str]:
     if mode == "fast":
         return [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-ss",
             f"{start}",
@@ -68,7 +90,7 @@ def build_ffmpeg_command(
             str(output_path),
         ]
     return [
-        "ffmpeg",
+        ffmpeg_path,
         "-y",
         "-i",
         str(input_path),
@@ -99,7 +121,7 @@ def split_video(
     logger: callable,
     progress: callable,
 ) -> Iterable[Path]:
-    ensure_ffmpeg_available()
+    ffmpeg_path, _ = ensure_ffmpeg_available()
     validate_paths(input_path, output_dir)
     total_duration = get_duration_seconds(input_path)
     total_segments = estimate_segments(total_duration, segment_duration)
@@ -117,7 +139,9 @@ def split_video(
             total_segments,
             output_ext,
         )
-        command = build_ffmpeg_command(input_path, output_path, start, duration, mode)
+        command = build_ffmpeg_command(
+            input_path, output_path, start, duration, mode, ffmpeg_path
+        )
         logger("Commande: " + " ".join(command))
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:

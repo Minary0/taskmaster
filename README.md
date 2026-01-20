@@ -24,6 +24,16 @@ Application de bureau multiplateforme pour découper une vidéo en segments de d
 - **macOS** : `brew install ffmpeg`
 - **Linux (Debian/Ubuntu)** : `sudo apt install ffmpeg`
 
+### Alternative sans PATH (option locale)
+
+Vous pouvez déposer `ffmpeg` et `ffprobe` dans un dossier `bin/` à côté de `main.py` :
+
+```
+bin/
+   ffmpeg.exe
+   ffprobe.exe
+```
+
 ## Lancer l'application
 
 ```bash
