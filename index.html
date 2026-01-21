@@ -273,6 +273,7 @@ button:active { transform: translateY(1px); }
       <button id="toggleMute"></button>
       <button id="textSize"></button>
       <button id="toggleHud"></button>
+      <button id="toggleLight"></button>
       <button id="optBack">Retour</button>
     </div>
   </div>
@@ -375,6 +376,8 @@ button:active { transform: translateY(1px); }
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  const lightCanvas = document.createElement('canvas');
+  const lightCtx = lightCanvas.getContext('2d');
   const mini = document.getElementById('minimap');
   const mctx = mini.getContext('2d');
 
@@ -403,8 +406,16 @@ button:active { transform: translateY(1px); }
     mute: false,
     textSize: 1,
     volume: 0.6,
-    hudCompact: true
+    hudCompact: true,
+    lightEnabled: true
   };
+
+  const LIGHT_RADIUS_BASE = 140;
+  const LIGHT_SOFTNESS = 0.7;
+  const DARK_ALPHA = 0.78;
+
+  lightCanvas.width = W;
+  lightCanvas.height = H;
 
   const acts = [
     { name: 'Acte I', biome: 'Marais Cendrés' },
@@ -3251,6 +3262,57 @@ button:active { transform: translateY(1px); }
     requestAnimationFrame(update);
   };
 
+  const computeDarkAlpha = (zoneIndex) => {
+    let alpha = DARK_ALPHA;
+    if (state.inHub) alpha = 0.55;
+    if (state.inSubzone) alpha += 0.12;
+    const actIndex = Math.floor(zoneIndex / 5);
+    if (actIndex >= 3) alpha += 0.06;
+    if (actIndex >= 4) alpha += 0.06;
+    if (settings.lowParticles) alpha += 0.04;
+    return clamp(alpha, 0.35, 0.95);
+  };
+
+  const renderLighting = (camX, camY, zoneIndex) => {
+    if (!settings.lightEnabled) return;
+    const now = nowSec();
+    const boost = clamp((state.lightUntil - now) / 4, 0, 1);
+    const flickerBase = settings.lowParticles ? 0 : Math.sin(state.time * 2.4) * 0.03 + Math.sin(state.time * 5.2) * 0.02;
+    const flicker = clamp(flickerBase, -0.05, 0.05);
+    const baseRadius = LIGHT_RADIUS_BASE * (state.inHub ? 1.1 : 1);
+    const radius = baseRadius * (1 + boost * 0.45 + flicker);
+    const softness = LIGHT_SOFTNESS + (settings.lowParticles ? 0.1 : 0);
+    const alpha = computeDarkAlpha(zoneIndex);
+    const gx = state.player.x - camX;
+    const gy = state.player.y - camY;
+
+    lightCtx.clearRect(0, 0, W, H);
+    lightCtx.fillStyle = `rgba(4, 6, 12, ${alpha.toFixed(2)})`;
+    lightCtx.fillRect(0, 0, W, H);
+    lightCtx.globalCompositeOperation = 'destination-out';
+    const inner = radius * (1 - clamp(softness, 0.2, 0.9));
+    const grad = lightCtx.createRadialGradient(gx, gy, inner, gx, gy, radius);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    lightCtx.fillStyle = grad;
+    lightCtx.beginPath();
+    lightCtx.arc(gx, gy, radius, 0, Math.PI * 2);
+    lightCtx.fill();
+    lightCtx.globalCompositeOperation = 'source-over';
+    if (boost > 0 || !settings.lowParticles) {
+      const halo = lightCtx.createRadialGradient(gx, gy, radius * 0.6, gx, gy, radius * 1.1);
+      const haloStrength = settings.lowParticles ? 0.1 : 0.18;
+      halo.addColorStop(0, 'rgba(253, 224, 71, 0)');
+      halo.addColorStop(0.7, `rgba(253, 224, 71, ${(haloStrength + boost * 0.2).toFixed(2)})`);
+      halo.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      lightCtx.fillStyle = halo;
+      lightCtx.beginPath();
+      lightCtx.arc(gx, gy, radius * 1.1, 0, Math.PI * 2);
+      lightCtx.fill();
+    }
+    ctx.drawImage(lightCanvas, 0, 0);
+  };
+
   const draw = () => {
     const p = state.player;
     const zoneIndex = currentZone();
@@ -3480,37 +3542,7 @@ button:active { transform: translateY(1px); }
       ctx.fillRect(0, 0, W, H);
     }
 
-    if (state.inSubzone) {
-      const now = nowSec();
-      const lightFactor = clamp((state.lightUntil - now) / 4, 0, 1);
-      const radius = 40 + lightFactor * 200;
-      const baseAlpha = 0.94 - lightFactor * 0.35;
-      ctx.save();
-      ctx.fillStyle = `rgba(0,0,0,${baseAlpha.toFixed(2)})`;
-      ctx.fillRect(0, 0, W, H);
-      const gx = p.x - camX;
-      const gy = p.y - camY;
-      if (lightFactor > 0) {
-        ctx.globalCompositeOperation = 'destination-out';
-        const cut = ctx.createRadialGradient(gx, gy, radius * 0.1, gx, gy, radius);
-        cut.addColorStop(0, 'rgba(0,0,0,1)');
-        cut.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = cut;
-        ctx.beginPath();
-        ctx.arc(gx, gy, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-        const halo = ctx.createRadialGradient(gx, gy, radius * 0.5, gx, gy, radius * 1.05);
-        halo.addColorStop(0, 'rgba(253, 224, 71, 0)');
-        halo.addColorStop(0.7, `rgba(253, 224, 71, ${0.15 + lightFactor * 0.25})`);
-        halo.addColorStop(1, 'rgba(253, 224, 71, 0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath();
-        ctx.arc(gx, gy, radius * 1.05, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
+    renderLighting(camX, camY, zoneIndex);
 
     const trackedTarget = getTrackedTarget();
     if (trackedTarget && trackedTarget.zone === currentZone() && !state.inHub) {
@@ -3991,6 +4023,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
     document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
     document.getElementById('toggleHud').textContent = `HUD: ${settings.hudCompact ? 'Compact' : 'Standard'}`;
+    document.getElementById('toggleLight').textContent = `Lumière: ${settings.lightEnabled ? 'ON' : 'OFF'}`;
     document.body.classList.toggle('hud-compact', settings.hudCompact);
   };
 
@@ -3998,6 +4031,7 @@ button:active { transform: translateY(1px); }
     const data = localStorage.getItem(SETTINGS_KEY);
     if (data) Object.assign(settings, JSON.parse(data));
     if (typeof settings.hudCompact !== 'boolean') settings.hudCompact = true;
+    if (typeof settings.lightEnabled !== 'boolean') settings.lightEnabled = true;
     applySettings();
   };
 
@@ -4098,6 +4132,7 @@ button:active { transform: translateY(1px); }
   document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
   document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
   document.getElementById('toggleHud').addEventListener('click', () => { settings.hudCompact = !settings.hudCompact; applySettings(); saveSettings(); });
+  document.getElementById('toggleLight').addEventListener('click', () => { settings.lightEnabled = !settings.lightEnabled; applySettings(); saveSettings(); });
   document.getElementById('musicVolume').addEventListener('input', (e) => {
     settings.volume = clamp(Number(e.target.value) / 100, 0, 1);
     applySettings();
