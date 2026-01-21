@@ -57,7 +57,7 @@ button:active { transform: translateY(1px); }
 .preview-ring { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #2c2c3c; background: #111827; }
 
 #hud { position: absolute; top: 0; left: 0; width: 100%; padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 8px calc(8px + env(safe-area-inset-left)); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; gap: 8px; }
-#hud .panel { pointer-events: auto; }
+#hud .panel { pointer-events: none; }
 .bar { position: relative; height: 12px; background: #222; margin-bottom: 5px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
 .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #8b0000, #ff3333); }
 .bar.sta > span { background: linear-gradient(90deg, #8b6500, #ffcc00); }
@@ -70,6 +70,8 @@ button:active { transform: translateY(1px); }
 .hud-compact #minimap { width: 110px; height: 110px; }
 .hud-compact .panel { padding: 12px; }
 .hud-compact .bar { height: 10px; margin-bottom: 4px; }
+.hud-left { max-width: 240px; width: 220px; }
+.hud-right { max-width: 260px; width: 220px; }
 #spell-wheel { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); pointer-events: auto; }
 #spell-wheel .wheel { position: relative; width: 240px; height: 240px; border-radius: 50%; border: 1px solid #3a3a4e; background: rgba(10,10,16,0.85); box-shadow: 0 0 18px rgba(0,0,0,0.8); }
 #spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: grid; place-items: center; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
@@ -120,7 +122,7 @@ button:active { transform: translateY(1px); }
 </div>
 <div id="ui">
   <div id="hud">
-    <div class="panel">
+    <div class="panel hud-left">
       <div>PV</div>
       <div class="bar"><span id="hpBar"></span></div>
       <div>Endurance</div>
@@ -130,7 +132,7 @@ button:active { transform: translateY(1px); }
       <div class="small">Sort: <span id="spellText">Aucun</span></div>
       <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
     </div>
-    <div class="panel">
+    <div class="panel hud-right">
       <div id="zoneText">Zone</div>
       <div id="questText" class="small">Objectif</div>
       <canvas id="minimap" width="120" height="120"></canvas>
