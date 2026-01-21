@@ -3483,9 +3483,10 @@ button:active { transform: translateY(1px); }
     if (state.inSubzone) {
       const now = nowSec();
       const lightFactor = clamp((state.lightUntil - now) / 2.5, 0, 1);
-      const radius = 60 + lightFactor * 160;
+      const radius = 80 + lightFactor * 220;
+      const baseAlpha = 0.92 - lightFactor * 0.35;
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillStyle = `rgba(0,0,0,${baseAlpha.toFixed(2)})`;
       ctx.fillRect(0, 0, W, H);
       ctx.globalCompositeOperation = 'destination-out';
       const gx = p.x - camX;
@@ -3497,6 +3498,16 @@ button:active { transform: translateY(1px); }
       ctx.beginPath();
       ctx.arc(gx, gy, radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      if (lightFactor > 0) {
+        const glow = ctx.createRadialGradient(gx, gy, radius * 0.1, gx, gy, radius * 0.9);
+        glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+        glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(gx, gy, radius * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 
