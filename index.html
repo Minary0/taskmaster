@@ -56,15 +56,20 @@ button:active { transform: translateY(1px); }
 .preview-box { width: 18px; height: 18px; border: 1px solid #2c2c3c; background: #111827; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
 .preview-ring { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #2c2c3c; background: #111827; }
 
-#hud { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+#hud { position: absolute; top: 0; left: 0; width: 100%; padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 8px calc(8px + env(safe-area-inset-left)); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; gap: 8px; }
 #hud .panel { pointer-events: auto; }
-.bar { position: relative; height: 14px; background: #222; margin-bottom: 6px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
+.bar { position: relative; height: 12px; background: #222; margin-bottom: 5px; border: 1px solid #000; box-shadow: 0 0 4px rgba(0,0,0,0.8); }
 .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #8b0000, #ff3333); }
 .bar.sta > span { background: linear-gradient(90deg, #8b6500, #ffcc00); }
 .bar.mana > span { background: linear-gradient(90deg, #00338b, #3388ff); }
 .small { font-size: 12px; color: var(--text-dim); }
 
-#minimap { width: 150px; height: 150px; border: 2px solid var(--ui-border); background: #000; opacity: 0.8; }
+#minimap { width: 120px; height: 120px; border: 2px solid var(--ui-border); background: #000; opacity: 0.85; }
+
+.hud-compact #hud { padding: calc(6px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) 6px calc(6px + env(safe-area-inset-left)); }
+.hud-compact #minimap { width: 110px; height: 110px; }
+.hud-compact .panel { padding: 12px; }
+.hud-compact .bar { height: 10px; margin-bottom: 4px; }
 #spell-wheel { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); pointer-events: auto; }
 #spell-wheel .wheel { position: relative; width: 240px; height: 240px; border-radius: 50%; border: 1px solid #3a3a4e; background: rgba(10,10,16,0.85); box-shadow: 0 0 18px rgba(0,0,0,0.8); }
 #spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: grid; place-items: center; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
@@ -237,6 +242,7 @@ button:active { transform: translateY(1px); }
       <button id="toggleParticles"></button>
       <button id="toggleMute"></button>
       <button id="textSize"></button>
+      <button id="toggleHud"></button>
       <button id="optBack">Retour</button>
     </div>
   </div>
@@ -363,7 +369,8 @@ button:active { transform: translateY(1px); }
     lowParticles: false,
     mute: false,
     textSize: 1,
-    volume: 0.6
+    volume: 0.6,
+    hudCompact: true
   };
 
   const acts = [
@@ -587,6 +594,7 @@ button:active { transform: translateY(1px); }
     lastHubCheckpoint: null,
     spellWheel: { open: false, options: [] },
     selectedSpell: null,
+    spellCooldown: 0,
     minimapZoom: 20,
     debug: false,
     activeZone: 0,
@@ -1054,6 +1062,7 @@ button:active { transform: translateY(1px); }
     const key = `zone-${zone}`;
     if (state.zoneFlow[key]) return;
     const isHub = false;
+    // Mur indestructible: pas de logique de destruction.
     const rng = getZoneRng(zone);
     const clusterCenter = findZonePoint(zone, rng, 10);
     const orbs = [];
@@ -1800,10 +1809,15 @@ button:active { transform: translateY(1px); }
       showToast('Aucun sort sélectionné');
       return;
     }
+    if (state.spellCooldown > 0) {
+      showToast('Sort en recharge');
+      return;
+    }
     const spell = state.selectedSpell;
     const didCast = castSpell(spell);
     if (didCast) {
-      state.selectedSpell = null;
+      state.spellCooldown = 0.6;
+      updateBars();
     }
   };
 
@@ -2216,6 +2230,7 @@ button:active { transform: translateY(1px); }
     const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
     state.time = ts;
     state.runTime += dt;
+    state.spellCooldown = Math.max(0, state.spellCooldown - dt);
     const zoneNow = currentZone();
     initZoneFlow(zoneNow);
     if (state.activeZone !== zoneNow) {
@@ -2437,6 +2452,11 @@ button:active { transform: translateY(1px); }
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.selectedSpell) state.selectedSpell = null;
+    if (!state.player.manaMax || state.player.manaMax <= 0) {
+      const base = classes[state.player.classKey] || classes.blade;
+      state.player.manaMax = base.mana;
+      state.player.mana = Math.min(state.player.mana || base.mana, state.player.manaMax);
+    }
     if (!state.minimapZoom) state.minimapZoom = 20;
     if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
     if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
@@ -2733,11 +2753,14 @@ button:active { transform: translateY(1px); }
     document.getElementById('toggleMute').textContent = `Mute: ${settings.mute ? 'ON' : 'OFF'}`;
     document.getElementById('textSize').textContent = `Taille texte: ${settings.textSize === 2 ? 'Grand' : settings.textSize === 1 ? 'Normal' : 'Petit'}`;
     document.getElementById('musicVolume').value = Math.round(settings.volume * 100);
+    document.getElementById('toggleHud').textContent = `HUD: ${settings.hudCompact ? 'Compact' : 'Standard'}`;
+    document.body.classList.toggle('hud-compact', settings.hudCompact);
   };
 
   const loadSettings = () => {
     const data = localStorage.getItem(SETTINGS_KEY);
     if (data) Object.assign(settings, JSON.parse(data));
+    if (typeof settings.hudCompact !== 'boolean') settings.hudCompact = true;
     applySettings();
   };
 
@@ -2836,6 +2859,7 @@ button:active { transform: translateY(1px); }
   document.getElementById('toggleParticles').addEventListener('click', () => { settings.lowParticles = !settings.lowParticles; applySettings(); saveSettings(); });
   document.getElementById('toggleMute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); saveSettings(); });
   document.getElementById('textSize').addEventListener('click', () => { settings.textSize = settings.textSize === 2 ? 0 : settings.textSize + 1; applySettings(); saveSettings(); });
+  document.getElementById('toggleHud').addEventListener('click', () => { settings.hudCompact = !settings.hudCompact; applySettings(); saveSettings(); });
   document.getElementById('musicVolume').addEventListener('input', (e) => {
     settings.volume = clamp(Number(e.target.value) / 100, 0, 1);
     applySettings();
@@ -2909,9 +2933,12 @@ button:active { transform: translateY(1px); }
     if (key === 'c') { openPanel('character'); renderCharacter(); }
     if (key === 'q') { openPanel('journal'); renderJournal(); }
     if (key === 'r') openSpellWheel();
+    if (key === 'f') {
+      castSelectedSpell();
+    }
     if (key === '+' || key === '=') state.minimapZoom = clamp(state.minimapZoom - 2, 12, 28);
     if (key === '-') state.minimapZoom = clamp(state.minimapZoom + 2, 12, 28);
-    if (key === 'f') { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
+    if (key === 'g' && !state.spellWheel.open) { state.debug = !state.debug; document.getElementById('debug').style.display = state.debug ? 'block' : 'none'; }
     if (key === 'h') {
       const idx = state.player.inv.findIndex(it => it.type === 'potion');
       if (idx >= 0) {
@@ -2959,6 +2986,12 @@ button:active { transform: translateY(1px); }
       castSelectedSpell();
     } else {
       openSpellWheel();
+    }
+  });
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!state.running || state.dead) return;
+    if (e.button === 0 && e.shiftKey) {
+      castSelectedSpell();
     }
   });
 
