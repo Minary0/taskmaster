@@ -385,8 +385,8 @@ button:active { transform: translateY(1px); }
   const H = 540;
   const TILE = 16;
   const MAP = 64;
-  const HUB_MAP = 32;
-  const SUB_MAP = 24;
+  const HUB_MAP = MAP;
+  const SUB_MAP = MAP;
   const WALL_THICKNESS = 3;
   const GATE_Y = 24;
   const DROP_PICKUP_RANGE = 120;
@@ -826,6 +826,7 @@ button:active { transform: translateY(1px); }
     spellCooldowns: {},
     trackedQuestId: null,
     castLockUntil: 0,
+    lightUntil: 0,
     minimapZoom: 20,
     debug: false,
     activeZone: 0,
@@ -1050,13 +1051,24 @@ button:active { transform: translateY(1px); }
   };
 
   const collidesCircle = (x, y, r) => {
-    const points = [
-      [x - r, y - r],
-      [x + r, y - r],
-      [x - r, y + r],
-      [x + r, y + r]
-    ];
-    return points.some(([px, py]) => isSolidAt(px, py));
+    const minX = Math.floor((x - r) / TILE);
+    const maxX = Math.floor((x + r) / TILE);
+    const minY = Math.floor((y - r) / TILE);
+    const maxY = Math.floor((y + r) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        const tileX = tx * TILE;
+        const tileY = ty * TILE;
+        const checkX = clamp(x, tileX, tileX + TILE);
+        const checkY = clamp(y, tileY, tileY + TILE);
+        const dx = x - checkX;
+        const dy = y - checkY;
+        if (dx * dx + dy * dy <= r * r && isSolidAt(checkX, checkY)) {
+          return true;
+        }
+      }
+    }
+    return false;
   };
 
   const getCamera = () => {
@@ -1448,7 +1460,8 @@ button:active { transform: translateY(1px); }
       altar.x = clusterCenter.x + 2 * TILE;
       altar.y = clusterCenter.y + 2 * TILE;
     }
-    const gate = { id: `gate-${zone}`, type: 'gate', direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
+    const gateType = zone % 5 === 4 ? 'act_gate' : 'gate';
+    const gate = { id: `gate-${zone}`, type: gateType, direction: 'forward', x: zone * MAP * TILE + (MAP - WALL_THICKNESS) * TILE, y: 24 * TILE, locked: true };
     let backGate = null;
     if (zone > 0) {
       const prevFlow = state.zoneFlow[`zone-${zone - 1}`];
@@ -1992,7 +2005,7 @@ button:active { transform: translateY(1px); }
     state.drops.forEach(d => drawDot(d.x, d.y, '#facc15', 2.4));
     state.interactables.forEach(it => {
       if (Math.floor(it.x / (MAP * TILE)) !== zoneIndex) return;
-      if (it.type === 'gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
+      if (it.type === 'gate' || it.type === 'act_gate') drawDot(it.x, it.y, '#38bdf8', 2.6);
       else if (it.type === 'rift_sanctuary') drawDot(it.x, it.y, '#fef3c7', 2.8);
       else if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 2.6);
       else if (it.active !== false) drawDot(it.x, it.y, '#eab308', 2.2);
@@ -2014,7 +2027,7 @@ button:active { transform: translateY(1px); }
     getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && !it.active) return;
       if (it.type === 'altar' && !it.active) return;
-      if (['gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return', 'fountain', 'bench', 'notice', 'forge', 'library', 'oath', 'relic', 'shrine', 'subzone_gate', 'subzone_exit'].includes(it.type)) {
+      if (['gate', 'act_gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return', 'fountain', 'bench', 'notice', 'forge', 'library', 'oath', 'relic', 'shrine', 'subzone_gate', 'subzone_exit'].includes(it.type)) {
         targets.push({ x: it.x, y: it.y, type: it.type });
       }
     });
@@ -2428,13 +2441,15 @@ button:active { transform: translateY(1px); }
     { id: 'nova', name: 'Nova', effect: 'nova', element: 'arcane', cost: 26, cooldown: 2.4, iconKey: 'amulet', desc: 'Onde courte autour du Marqué.' },
     { id: 'ice', name: 'Ice Spike', effect: 'ice', element: 'ice', cost: 22, cooldown: 1.8, iconKey: 'staff', desc: 'Ralenti et perce la brume.' },
     { id: 'fire', name: 'Fireball', effect: 'fire', element: 'fire', cost: 24, cooldown: 2.0, iconKey: 'staff', desc: 'Explosion ardente à l\'impact.' },
+    { id: 'flare', name: 'Flare Shot', effect: 'flare', element: 'fire', cost: 20, cooldown: 2.6, iconKey: 'sword', desc: 'Volée incandescente en éventail.' },
+    { id: 'ward', name: 'Ward', effect: 'ward', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'ring', desc: 'Armure mystique et soin léger.' },
     { id: 'chain', name: 'Chain Lightning', effect: 'chain', element: 'lightning', cost: 28, cooldown: 3.2, iconKey: 'amulet', desc: 'Saut d\'éclairs entre ennemis.' },
     { id: 'poison', name: 'Poison Cloud', effect: 'poison', element: 'poison', cost: 20, cooldown: 3.0, iconKey: 'amulet', desc: 'Néfaste sur la durée.' },
-    { id: 'shield', name: 'Shield', effect: 'shield', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'ring', desc: 'Bouclier bref, défense accrue.' },
+    { id: 'shield', name: 'Shield', effect: 'shield', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'helm', desc: 'Bouclier bref, défense accrue.' },
     { id: 'blink', name: 'Blink', effect: 'blink', element: 'arcane', cost: 16, cooldown: 3.2, iconKey: 'boots', desc: 'Téléportation courte.' },
     { id: 'gravity', name: 'Gravity Pull', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Ramène les ennemis.' },
     { id: 'summon', name: 'Summon Orb', effect: 'summon', element: 'arcane', cost: 30, cooldown: 5.0, iconKey: 'ring', desc: 'Orbe orbitale protectrice.' },
-    { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 22, cooldown: 4.0, iconKey: 'amulet', desc: 'Révèle et repousse la brume.' }
+    { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 22, cooldown: 4.0, iconKey: 'amulet', desc: 'Halo apaisant contre la brume.' }
   ];
 
   const pickSpellOptions = () => {
@@ -2573,6 +2588,25 @@ button:active { transform: translateY(1px); }
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 230, vy: Math.sin(angle) * 230, life: 1.1, dmg: 9 + magicPower * 0.35, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.8, element: 'ice' });
     } else if (spell.effect === 'fire') {
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 14 + magicPower * 0.6, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire', burn: 2.5 });
+    } else if (spell.effect === 'flare') {
+      const spread = 0.22;
+      [-spread, 0, spread].forEach((offset) => {
+        const theta = angle + offset;
+        state.projectiles.push({
+          x: p.x,
+          y: p.y,
+          vx: Math.cos(theta) * 240,
+          vy: Math.sin(theta) * 240,
+          life: 0.9,
+          dmg: 8 + magicPower * 0.4,
+          size: 4,
+          color: '#fb923c',
+          shape: 'orb',
+          explode: true,
+          element: 'fire',
+          burn: 1.6
+        });
+      });
     } else if (spell.effect === 'chain') {
       let target = state.enemies[0];
       if (target) {
@@ -2589,6 +2623,9 @@ button:active { transform: translateY(1px); }
       state.enemies.forEach(e => { e.poison = 3.2; e.poisonElement = 'poison'; });
     } else if (spell.effect === 'shield') {
       applyTimedBonus('def', 4, 3000);
+    } else if (spell.effect === 'ward') {
+      applyTimedBonus('def', 3, 4000);
+      p.hp = clamp(p.hp + p.hpMax * 0.12, 0, p.hpMax);
     } else if (spell.effect === 'blink') {
       p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
     } else if (spell.effect === 'gravity') {
@@ -2606,6 +2643,8 @@ button:active { transform: translateY(1px); }
         state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6 + magicPower * 0.2, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
       }
     } else if (spell.effect === 'light') {
+      const now = nowSec();
+      state.lightUntil = Math.max(state.lightUntil, now + 6);
       const zone = currentZone();
       for (let i = 0; i < 12; i++) {
         const angleL = (Math.PI * 2 * i) / 12;
@@ -2857,7 +2896,7 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const gate = nearest(getActiveInteractables().filter(i => i.type === 'gate'), GATE_RANGE);
+    const gate = nearest(getActiveInteractables().filter(i => i.type === 'gate' || i.type === 'act_gate'), GATE_RANGE);
     const teleportThroughGate = (direction) => {
       const targetZone = direction === 'forward'
         ? clamp(zone + 1, 0, zones.length - 1)
@@ -2872,9 +2911,8 @@ button:active { transform: translateY(1px); }
       let spawnX = direction === 'forward'
         ? targetZone * MAP * TILE + (WALL_THICKNESS + 2) * TILE
         : targetZone * MAP * TILE + (MAP - WALL_THICKNESS - 3) * TILE;
-      let spawnY = GATE_Y * TILE;
+      let spawnY = clamp(state.player.y, TILE * 2, TILE * (MAP - 2));
       if (targetGate) {
-        spawnY = targetGate.y;
         spawnX = direction === 'forward' ? targetGate.x + TILE * 2 : targetGate.x - TILE * 2;
       }
       const nudges = [
@@ -3219,6 +3257,7 @@ button:active { transform: translateY(1px); }
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
       else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
       else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
+      else if (it.type === 'act_gate') ctx.fillStyle = it.locked ? '#a16207' : '#fbbf24';
       else if (it.type === 'rift_sanctuary' || it.type === 'rift_return') ctx.fillStyle = '#fef3c7';
       else if (it.type === 'rest') ctx.fillStyle = '#22c55e';
       else if (it.type === 'relic') ctx.fillStyle = '#eab308';
@@ -3232,12 +3271,21 @@ button:active { transform: translateY(1px); }
       else if (it.type === 'library') ctx.fillStyle = '#94a3b8';
       else if (it.type === 'oath') ctx.fillStyle = '#c084fc';
       else return;
-      ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+      if (it.type === 'act_gate') {
+        ctx.beginPath();
+        ctx.arc(it.x - camX, it.y - camY, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fde047';
+        ctx.stroke();
+      } else {
+        ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
+      }
     });
     getInteractableTargets().forEach(t => {
       const sx = t.x - camX;
       const sy = t.y - camY;
       const label = t.type === 'gate' ? 'Porte'
+        : t.type === 'act_gate' ? 'Portail d\'acte'
         : t.type === 'orb' ? 'Noyau'
           : t.type === 'altar' ? 'Autel'
             : t.type === 'rift_sanctuary' ? 'Sanctuaire'
@@ -3256,6 +3304,7 @@ button:active { transform: translateY(1px); }
                                   : t.type === 'subzone_exit' ? 'Sortie'
                     : 'Potion';
       ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
+        : t.type === 'act_gate' ? '#fbbf24'
         : t.type === 'orb' ? '#a855f7'
           : t.type === 'altar' ? '#f59e0b'
             : t.type === 'rift_sanctuary' ? '#fef3c7'
@@ -3358,8 +3407,46 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(e.x - camX - 6, e.y - camY - 10, 12 * (e.hp / e.hpMax), 2);
     });
+      const trackedPathTarget = getTrackedTarget();
+      if (trackedPathTarget && trackedPathTarget.zone === currentZone()) {
+        const dx = trackedPathTarget.x - p.x;
+        const dy = trackedPathTarget.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) {
+          const steps = Math.floor(dist / 22);
+          ctx.fillStyle = 'rgba(251, 191, 36, 0.85)';
+          for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const px = p.x + dx * t;
+            const py = p.y + dy * t;
+            ctx.beginPath();
+            ctx.arc(px - camX, py - camY, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
       ctx.fillStyle = `rgba(10, 12, 16, ${zone.fog})`;
       ctx.fillRect(0, 0, W, H);
+    }
+
+    if (state.inSubzone) {
+      const now = nowSec();
+      const lightFactor = clamp((state.lightUntil - now) / 2.5, 0, 1);
+      const radius = 60 + lightFactor * 160;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'destination-out';
+      const gx = p.x - camX;
+      const gy = p.y - camY;
+      const grad = ctx.createRadialGradient(gx, gy, radius * 0.2, gx, gy, radius);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(gx, gy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     const trackedTarget = getTrackedTarget();
@@ -3425,7 +3512,7 @@ button:active { transform: translateY(1px); }
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.selectedSpell) state.selectedSpell = null;
     if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
-      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire'];
+      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare'];
     }
     if (!state.spellCooldowns) state.spellCooldowns = {};
     if (!state.player.manaMax || state.player.manaMax <= 0) {
@@ -3856,7 +3943,7 @@ button:active { transform: translateY(1px); }
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     applyEquipmentStats();
-    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire'];
+    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare'];
     state.running = true;
     state.paused = false;
     state.dead = false;
