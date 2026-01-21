@@ -1,11 +1,10 @@
 <!--
 CHANGELOG
-- Ajuste le style UI pour coller au design dark-fantasy (palette, typographies locales, barres).
-- Remplace l’ambiance par une musique procédurale (accords + mélodie) déclenchée après interaction.
-- Corrige le curseur et le tracking souris (évite le décrochage).
-- Réduit la densité de murs et améliore la lisibilité de la carte.
-- Ajoute un loot en orbes lumineuses + pickup stylé.
-- Resserre l’échelle (joueur plus petit, ennemis légèrement plus grands).
+- HUD boss centré, inventaire à icônes avec tooltips comparatifs et slots équipés illustrés.
+- Équipement appliqué aux stats (bonus, lifesteal, buffs temporaires) + alliés ciblent le boss.
+- Spawns d’ennemis stabilisés par zone avec debug spawn, téléporteurs alignés.
+- Sanctuaire refondu (verdoyant, fontaine, ruines, props interactifs) + ambiance ajustée.
+- Système de quêtes (steps, triggers, récompenses) + variété d’objectifs et sorts enrichis.
 
 README
 ======
@@ -79,7 +78,7 @@ button:active { transform: translateY(1px); }
 .hud-right { max-width: 260px; width: 220px; }
 #spell-wheel { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); pointer-events: auto; }
 #spell-wheel .wheel { position: relative; width: 240px; height: 240px; border-radius: 50%; border: 1px solid #3a3a4e; background: rgba(10,10,16,0.85); box-shadow: 0 0 18px rgba(0,0,0,0.8); }
-#spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: grid; place-items: center; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
+#spell-wheel .slot { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--ui-border); background: rgba(18,18,24,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; font-size: 11px; padding: 6px; cursor: pointer; }
 #spell-wheel .slot:hover { border-color: var(--accent); color: var(--accent); }
 #spell-wheel .slot.top { top: -10px; left: 75px; }
 #spell-wheel .slot.left { left: -10px; top: 75px; }
@@ -91,7 +90,9 @@ button:active { transform: translateY(1px); }
 #toast.show { opacity: 1; }
 
 #item-tooltip { position: fixed; z-index: 50; pointer-events: none; background: rgba(10,12,20,0.96); border: 1px solid #2a3144; padding: 8px 10px; border-radius: 6px; min-width: 160px; max-width: 260px; box-shadow: 0 0 12px rgba(0,0,0,0.8); display: none; }
-#item-tooltip .title { font-family: "Cinzel", "Georgia", serif; font-size: 13px; margin-bottom: 4px; color: var(--accent); }
+#item-tooltip .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+#item-tooltip .head .icon { width: 28px; height: 28px; background-size: contain; background-repeat: no-repeat; background-position: center; }
+#item-tooltip .title { font-family: "Cinzel", "Georgia", serif; font-size: 13px; color: var(--accent); }
 #item-tooltip .line { font-size: 12px; color: var(--text-main); }
 #item-tooltip .line.dim { color: var(--text-dim); }
 #item-tooltip .delta { font-size: 11px; margin-top: 4px; }
@@ -103,9 +104,18 @@ button:active { transform: translateY(1px); }
 .list { display: grid; gap: 8px; }
 .inv-layout { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 10px; }
 .inv-center { display: grid; place-items: center; min-height: 160px; border: 1px solid var(--ui-border); background: rgba(10,10,16,0.7); }
-.inv-slot { border: 1px solid #2c2c3c; background: #0b0f16; padding: 6px; min-height: 48px; }
+.inv-slot { border: 1px solid #2c2c3c; background: #0b0f16; padding: 6px; min-height: 48px; display: grid; gap: 6px; }
+.inv-slot .slot-icon { width: 32px; height: 32px; background-size: contain; background-repeat: no-repeat; background-position: center; }
 .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; margin-top: 10px; }
-.inv-cell { width: 60px; height: 60px; border: 1px solid #2c2c3c; background: #111827; display: grid; place-items: center; font-size: 11px; }
+.inv-cell { position: relative; width: 60px; height: 60px; border: 1px solid #2c2c3c; background: #0b0f16; display: grid; place-items: center; font-size: 11px; }
+.inv-cell .icon { width: 42px; height: 42px; background-size: contain; background-repeat: no-repeat; background-position: center; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
+.inv-cell::after { content: ""; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: #334155; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+.inv-cell[data-rarity="rare"]::after { background: var(--rare); }
+.inv-cell[data-rarity="epic"]::after { background: var(--epic); }
+.inv-cell[data-rarity="legendary"]::after { background: var(--legend); }
+.inv-cell[data-rarity="rare"] { box-shadow: 0 0 6px rgba(77,148,255,0.4); }
+.inv-cell[data-rarity="epic"] { box-shadow: 0 0 8px rgba(163,53,238,0.45); }
+.inv-cell[data-rarity="legendary"] { box-shadow: 0 0 10px rgba(255,128,0,0.45); }
 .inv-cell.rare { border-color: var(--rare); }
 .inv-cell.epic { border-color: var(--epic); }
 .inv-cell.legendary { border-color: var(--legend); }
@@ -411,6 +421,7 @@ button:active { transform: translateY(1px); }
       fog: 0.35 + zone * 0.05 + act * 0.04
     };
   });
+  const zoneEventTypes = ['relic', 'survive', 'elite', 'shrine'];
 
   const classes = {
     blade: {
@@ -499,28 +510,102 @@ button:active { transform: translateY(1px); }
     { id: 'u12', name: 'Armure d\'Astral-Morne', slot: 'armor', desc: 'Forgée pour un roi qui n\'a jamais régné.' }
   ];
 
-  const quests = [
-    { id: 'q1', title: 'Serment des Cendres', type: 'main', zone: 0, desc: 'Quitter le sanctuaire en ruine.' },
-    { id: 'q2', title: 'Noyaux de Brume', type: 'main', zone: 0, desc: 'Détruire 3 noyaux dans les Marais.' },
-    { id: 'q3', title: 'La Mère-Noyée', type: 'main', zone: 0, desc: 'Vaincre le boss des Marais.' },
-    { id: 'q4', title: 'Le Voile Noir', type: 'main', zone: 1, desc: 'Trouver Elyne, l\'Éclat Brisé.' },
-    { id: 'q5', title: 'Cerf Sans Visage', type: 'main', zone: 1, desc: 'Vaincre le Cerf.' },
-    { id: 'q6', title: 'Sceaux de Caldris', type: 'main', zone: 2, desc: 'Récupérer 3 sceaux.' },
-    { id: 'q7', title: 'Archiviste Creux', type: 'main', zone: 2, desc: 'Vaincre l\'Archiviste.' },
-    { id: 'q8', title: 'Hymnes brisés', type: 'main', zone: 3, desc: 'Apaiser 3 autels du Cratère.' },
-    { id: 'q9', title: 'Chœur des Fêlés', type: 'main', zone: 3, desc: 'Vaincre le Chœur.' },
-    { id: 'q10', title: 'Roi du Serment Fendu', type: 'main', zone: 4, desc: 'Confronter la Citadelle.' },
-    { id: 's1', title: 'Souvenir fendu', type: 'side', zone: 0, desc: 'Récupérer une bague perdue.' },
-    { id: 's2', title: 'Marchand de cendres', type: 'side', zone: 0, desc: 'Apporter 5 matériaux au marchand.' },
-    { id: 's3', title: 'Chants étouffés', type: 'side', zone: 1, desc: 'Libérer un enfant du voile.' },
-    { id: 's4', title: 'La dette d\'Elyne', type: 'side', zone: 1, desc: 'Choisir d\'aider Elyne.' },
-    { id: 's5', title: 'Cendres du Porteur', type: 'side', zone: 2, desc: 'Trouver Kael.' },
-    { id: 's6', title: 'Cartes brisées', type: 'side', zone: 2, desc: 'Assembler une carte antique.' },
-    { id: 's7', title: 'Litanie du Cratère', type: 'side', zone: 3, desc: 'Sauver un chœur errant.' },
-    { id: 's8', title: 'La voix de pierre', type: 'side', zone: 3, desc: 'Écouter l\'autel silencieux.' },
-    { id: 's9', title: 'Serment des Deux', type: 'side', zone: 4, desc: 'Unir Elyne et Kael.' },
-    { id: 's10', title: 'Le prix du pouvoir', type: 'side', zone: 4, desc: 'Refuser une offrande.' }
-  ];
+  const generateQuests = () => {
+    const mainByAct = [
+      [
+        { title: 'Serment des Cendres', lore: 'Le marais répond à ceux qui prêtent serment.' },
+        { title: 'Noyaux en Ruine', lore: 'Chaque noyau brisé calme un écho ancien.' },
+        { title: 'Seigneur des Marais', lore: 'Un pacte noyé remue sous la vase.' }
+      ],
+      [
+        { title: 'Voile Noir', lore: 'Les arbres murmurent les noms perdus.' },
+        { title: 'Cerf Sans Visage', lore: 'Il guide ou dévore, selon l\'humeur des brumes.' },
+        { title: 'Serment de Sylve', lore: 'Le bois garde la mémoire des Marqués.' }
+      ],
+      [
+        { title: 'Sceaux de Caldris', lore: 'Une page intacte vaut mille prières.' },
+        { title: 'Archiviste Creux', lore: 'Il récite des vérités vides.' },
+        { title: 'Ruines Chantées', lore: 'Les pierres veulent être écoutées.' }
+      ],
+      [
+        { title: 'Hymnes Brisés', lore: 'Le cratère attend un chant réparateur.' },
+        { title: 'Chœur des Fêlés', lore: 'Chaque voix fend la brume.' },
+        { title: 'Feu Astral', lore: 'Le ciel tombe en braises sacrées.' }
+      ],
+      [
+        { title: 'Citadelle Astral-Morne', lore: 'Une forteresse bâtie pour un silence éternel.' },
+        { title: 'Roi du Serment Fendu', lore: 'Il porte la couronne comme un fardeau.' },
+        { title: 'Dernière Déchirure', lore: 'Le dernier acte s\'écrit dans la cendre.' }
+      ]
+    ];
+    const sideTemplates = [
+      { type: 'kill', title: 'Lame au Clair', lore: 'Les bêtes n\'aiment pas la lumière.', target: 'dash', count: 6 },
+      { type: 'talk', title: 'Voix des Marais', lore: 'Un mot suffit à sauver un souvenir.' },
+      { type: 'pickup', title: 'Relique Éteinte', lore: 'Une relique gèle le souffle du lieu.' },
+      { type: 'orb', title: 'Noyaux Dispersés', lore: 'Chaque noyau détruit apaise la Brume.' },
+      { type: 'visit', title: 'Pierres Résonnantes', lore: 'Les pierres aiment qu\'on revienne.' }
+    ];
+    const quests = [];
+    const spellUnlocks = ['chain', 'poison', 'shield', 'blink', 'summon'];
+    acts.forEach((act, actIndex) => {
+      const baseZone = actIndex * 5;
+      mainByAct[actIndex].forEach((entry, i) => {
+        const id = `main-${actIndex}-${i}`;
+        const zoneId = baseZone + i;
+        const steps = [
+          { desc: `Atteindre ${acts[actIndex].biome} — Zone ${i + 1}`, trigger: 'enterZone', goal: 1, progress: 0, zone: zoneId },
+          { desc: 'Détruire 2 noyaux de brume', trigger: 'orb', goal: 2, progress: 0, zone: zoneId },
+          { desc: 'Vaincre un seigneur de zone', trigger: 'boss', goal: 1, progress: 0, zone: zoneId }
+        ];
+        const rewards = { gold: 40 + actIndex * 10, materials: 2 + actIndex, item: true };
+        if (i === 2) rewards.spell = spellUnlocks[actIndex];
+        quests.push({
+          id,
+          title: entry.title,
+          type: 'main',
+          zone: zoneId,
+          lore: entry.lore,
+          steps,
+          rewards
+        });
+      });
+    });
+    zones.forEach((zone) => {
+      for (let i = 0; i < 2; i++) {
+        const template = sideTemplates[(zone.id + i) % sideTemplates.length];
+        const id = `side-${zone.id}-${i}`;
+        const steps = [];
+        if (template.type === 'kill') {
+          steps.push({ desc: `Éliminer ${template.count} ennemis rapides`, trigger: 'kill', goal: template.count, progress: 0, kind: template.target, zone: zone.id });
+        } else if (template.type === 'talk') {
+          const npc = npcs.find(n => n.zone === zone.id) || npcs[0];
+          steps.push({ desc: `Parler à ${npc.name}`, trigger: 'talk', goal: 1, progress: 0, npc: npc.name, zone: zone.id });
+        } else if (template.type === 'pickup') {
+          steps.push({ desc: 'Ramasser une relique rare', trigger: 'pickup', goal: 1, progress: 0, itemType: 'relic', zone: zone.id });
+        } else if (template.type === 'orb') {
+          steps.push({ desc: 'Détruire 1 noyau de brume', trigger: 'orb', goal: 1, progress: 0, zone: zone.id });
+        } else if (template.type === 'visit') {
+          steps.push({ desc: 'Atteindre le cercle sacré', trigger: 'visit', goal: 1, progress: 0, zone: zone.id });
+        }
+        const questRewards = { gold: 18, materials: 1 };
+        if (zone.id % 7 === 0 && i === 1) {
+          questRewards.spell = 'gravity';
+        }
+        quests.push({
+          id,
+          title: `${template.title} — Zone ${zone.zone + 1}`,
+          type: 'side',
+          zone: zone.id,
+          lore: template.lore,
+          steps,
+          rewards: questRewards
+        });
+      }
+    });
+    return quests;
+  };
+
+  const quests = generateQuests();
 
   const lore = [
     'La Brume-Couronne naquit d\'un serment sans témoin.',
@@ -554,6 +639,62 @@ button:active { transform: translateY(1px); }
     'Une étoile se reflète dans chaque lac des Marais.',
     'Le dernier serment est toujours personnel.'
   ];
+
+  const initQuestState = () => {
+    state.quests = {};
+    quests.forEach((q) => {
+      state.quests[q.id] = {
+        stepIndex: 0,
+        steps: q.steps.map(step => ({ ...step })),
+        done: false
+      };
+    });
+  };
+
+  const getQuestStep = (questId) => {
+    const progress = state.quests[questId];
+    if (!progress || progress.done) return null;
+    return progress.steps[progress.stepIndex];
+  };
+
+  const applyQuestReward = (quest) => {
+    const reward = quest.rewards || {};
+    if (reward.gold) state.gold += reward.gold;
+    if (reward.materials) state.materials += reward.materials;
+    if (reward.item) {
+      addItem(normalizeItem(rollItem(currentZone())));
+    }
+    if (reward.spell) {
+      if (!state.unlockedSpells) state.unlockedSpells = [];
+      if (!state.unlockedSpells.includes(reward.spell)) state.unlockedSpells.push(reward.spell);
+      showToast(`Sort débloqué: ${reward.spell}`);
+    }
+    updateBars();
+  };
+
+  const updateQuestProgress = (trigger, payload) => {
+    quests.forEach((quest) => {
+      const progress = state.quests[quest.id];
+      if (!progress || progress.done) return;
+      const step = progress.steps[progress.stepIndex];
+      if (!step || step.trigger !== trigger) return;
+      if (step.zone !== undefined && payload?.zone !== undefined && step.zone !== payload.zone) return;
+      if (step.kind && payload?.kind && step.kind !== payload.kind) return;
+      if (step.npc && payload?.npc && step.npc !== payload.npc) return;
+      if (step.itemType && payload?.itemType && step.itemType !== payload.itemType) return;
+      step.progress = clamp(step.progress + (payload?.amount || 1), 0, step.goal);
+      if (step.progress >= step.goal) {
+        progress.stepIndex += 1;
+        if (progress.stepIndex >= progress.steps.length) {
+          progress.done = true;
+          showToast(`Quête terminée: ${quest.title}`);
+          applyQuestReward(quest);
+        } else {
+          showToast(`Étape complétée: ${quest.title}`);
+        }
+      }
+    });
+  };
 
   const npcs = [
     { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
@@ -614,12 +755,13 @@ button:active { transform: translateY(1px); }
     lastHubCheckpoint: null,
     spellWheel: { open: false, options: [] },
     selectedSpell: null,
-    spellCooldown: 0,
+    spellCooldowns: {},
     minimapZoom: 20,
     debug: false,
     activeZone: 0,
     shopType: 'general',
-    lastDamageSource: 'Inconnu'
+    lastDamageSource: 'Inconnu',
+    unlockedSpells: []
   };
 
   const keys = { up: false, down: false, left: false, right: false, attack: false, interact: false, dash: false };
@@ -637,6 +779,35 @@ button:active { transform: translateY(1px); }
     speed: 'Vitesse',
     crit: 'Critique',
     lifesteal: 'Vol de vie'
+  };
+
+  const ICON_SVGS = {
+    sword: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><rect x="28" y="6" width="8" height="30" fill="#e5e7eb"/><rect x="26" y="30" width="12" height="6" fill="#f59e0b"/><rect x="29" y="36" width="6" height="18" fill="#9ca3af"/><rect x="24" y="50" width="16" height="6" fill="#78350f"/></svg>',
+    bow: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><path d="M22 8c12 8 12 40 0 48" stroke="#f59e0b" stroke-width="4" fill="none"/><path d="M42 8c-12 8-12 40 0 48" stroke="#fde68a" stroke-width="2" fill="none"/><line x1="22" y1="8" x2="42" y2="56" stroke="#f97316" stroke-width="2"/></svg>',
+    staff: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><rect x="30" y="8" width="4" height="48" fill="#a855f7"/><circle cx="32" cy="12" r="6" fill="#c4b5fd"/></svg>',
+    armor: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><path d="M20 14l12-6 12 6v12l-6 26H26l-6-26z" fill="#94a3b8"/></svg>',
+    helm: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><path d="M18 30c0-10 8-18 14-18s14 8 14 18v14H18z" fill="#64748b"/><rect x="26" y="32" width="12" height="4" fill="#0f172a"/></svg>',
+    boots: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><path d="M20 14h16v22l12 6v8H18v-8l8-6z" fill="#f97316"/></svg>',
+    amulet: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><circle cx="32" cy="30" r="10" fill="#facc15"/><circle cx="32" cy="30" r="5" fill="#78350f"/><path d="M18 18c6-6 22-6 28 0" stroke="#eab308" stroke-width="3" fill="none"/></svg>',
+    ring: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><circle cx="32" cy="34" r="12" fill="#eab308"/><circle cx="32" cy="34" r="6" fill="#0f172a"/></svg>',
+    gloves: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><path d="M20 20h8v18h4V20h8v26l-10 10H20z" fill="#fca5a5"/></svg>',
+    potion: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><rect x="26" y="10" width="12" height="8" fill="#94a3b8"/><path d="M22 18h20l4 10-6 22H24l-6-22z" fill="#ef4444"/></svg>',
+    mana_potion: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="none"/><rect x="26" y="10" width="12" height="8" fill="#94a3b8"/><path d="M22 18h20l4 10-6 22H24l-6-22z" fill="#38bdf8"/></svg>'
+  };
+
+  const iconForItem = (item) => {
+    if (!item) return 'sword';
+    if (item.type === 'potion') return 'potion';
+    if (item.type === 'mana_potion') return 'mana_potion';
+    if (item.type === 'relic') return 'amulet';
+    if (item.iconKey) return item.iconKey;
+    if (item.slot === 'weapon') return 'sword';
+    return item.slot || 'sword';
+  };
+
+  const iconDataUrl = (key) => {
+    const svg = ICON_SVGS[key] || ICON_SVGS.sword;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   };
 
   const makeEmptyBonuses = () => ({
@@ -667,15 +838,32 @@ button:active { transform: translateY(1px); }
 
   const buildHubMap = () => {
     const tiles = Array.from({ length: HUB_MAP }, () => Array(HUB_MAP).fill(7));
+    const center = Math.floor(HUB_MAP / 2);
     for (let y = 0; y < HUB_MAP; y++) {
       for (let x = 0; x < HUB_MAP; x++) {
         if (x === 0 || y === 0 || x === HUB_MAP - 1 || y === HUB_MAP - 1) {
-          tiles[y][x] = 8;
+          tiles[y][x] = 10; // stone wall
+          continue;
+        }
+        const dx = x - center;
+        const dy = y - center;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 3) {
+          tiles[y][x] = 8; // basin
+          continue;
+        }
+        if (Math.abs(dx) < 2 || Math.abs(dy) < 2) {
+          tiles[y][x] = 9; // path
           continue;
         }
         const r = noise(x, y, state.seed + 999);
-        if (r < 0.05) tiles[y][x] = 2;
+        if (r < 0.06) tiles[y][x] = 11; // flowers
+        if (r > 0.92) tiles[y][x] = 12; // ruins
       }
+    }
+    for (let i = 4; i < HUB_MAP - 4; i += 6) {
+      tiles[center - 6][i] = 12;
+      tiles[center + 6][i] = 12;
     }
     state.hubMap = tiles;
   };
@@ -742,7 +930,7 @@ button:active { transform: translateY(1px); }
     return state.hubMap[ty][tx];
   };
 
-  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6 || t === 8;
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6 || t === 8 || t === 10 || t === 12;
 
   const isSolidAt = (x, y) => {
     if (state.inHub) {
@@ -989,10 +1177,10 @@ button:active { transform: translateY(1px); }
     ambientHub(actIndex) {
       if (!this.enabled || settings.mute) return;
       this.stopMusic();
-      const tempo = 64;
+      const tempo = 72;
       const beat = 60 / tempo;
-      const base = 140 + actIndex * 6;
-      const prog = [0, 5, 7, 3];
+      const base = 120 + actIndex * 4;
+      const prog = [0, 3, 5, 7];
       let step = 0;
       this._musicTimer = setInterval(() => {
         if (settings.mute || !this.enabled) return;
@@ -1000,9 +1188,9 @@ button:active { transform: translateY(1px); }
         const t = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-        osc.type = 'sine';
+        osc.type = 'triangle';
         osc.frequency.setValueAtTime(base * Math.pow(2, chord / 12), t);
-        gain.gain.setValueAtTime(0.018 * settings.volume, t);
+        gain.gain.setValueAtTime(0.015 * settings.volume, t);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + beat * 2);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -1157,6 +1345,17 @@ button:active { transform: translateY(1px); }
       const unlocked = prevFlow ? !prevFlow.gate.locked : false;
       backGate = { id: `gate-back-${zone}`, type: 'gate', direction: 'back', x: zone * MAP * TILE + (WALL_THICKNESS - 1) * TILE, y: 24 * TILE, locked: !unlocked };
     }
+    const eventType = zoneEventTypes[zone % zoneEventTypes.length];
+    const eventPoint = findZonePoint(zone, rng, 10);
+    const event = {
+      type: eventType,
+      x: eventPoint.x,
+      y: eventPoint.y,
+      radius: 60,
+      timer: 0,
+      done: false,
+      spawned: false
+    };
     state.zoneFlow[key] = {
       orbsDestroyed: 0,
       altar,
@@ -1166,9 +1365,16 @@ button:active { transform: translateY(1px); }
       keyDropped: false,
       bossState: { spawned: false, alive: false, defeated: false },
       riftSpawned: false,
-      isHub
+      isHub,
+      event
     };
     state.interactables.push(...orbs, altar, gate);
+    if (eventType === 'relic') {
+      state.interactables.push({ id: `relic-${zone}`, type: 'relic', x: event.x, y: event.y, active: true });
+    }
+    if (eventType === 'shrine') {
+      state.interactables.push({ id: `shrine-${zone}`, type: 'shrine', x: event.x, y: event.y, active: true });
+    }
     if (backGate) state.interactables.push(backGate);
   };
 
@@ -1188,7 +1394,10 @@ button:active { transform: translateY(1px); }
     const hubSpawn = { x: 16 * TILE, y: 20 * TILE };
     state.hubInteractables = [
       { id: 'hub-rest', type: 'rest', x: 12 * TILE, y: 20 * TILE },
-      { id: 'hub-return', type: 'rift_return', x: 20 * TILE, y: 20 * TILE }
+      { id: 'hub-return', type: 'rift_return', x: 20 * TILE, y: 20 * TILE },
+      { id: 'hub-fountain', type: 'fountain', x: 16 * TILE, y: 16 * TILE },
+      { id: 'hub-bench', type: 'bench', x: 10 * TILE, y: 24 * TILE },
+      { id: 'hub-notice', type: 'notice', x: 22 * TILE, y: 24 * TILE }
     ];
     state.player.x = hubSpawn.x;
     state.player.y = hubSpawn.y;
@@ -1235,9 +1444,14 @@ button:active { transform: translateY(1px); }
   };
 
   const normalizeItem = (item, zoneIndex = currentZone()) => {
-    if (!item || item.type) return item;
+    if (!item) return item;
+    if (item.type === 'potion' || item.type === 'mana_potion' || item.type === 'relic') {
+      item.iconKey = iconForItem(item);
+      return item;
+    }
     if (!item.id) item.id = `it-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     if (!item.power) item.power = zoneIndex + 1;
+    item.iconKey = iconForItem(item);
     item.bonuses = getItemBonuses(item);
     return item;
   };
@@ -1347,6 +1561,13 @@ button:active { transform: translateY(1px); }
       audio.loot();
       return;
     }
+    if (item.type === 'relic') {
+      state.player.inv.push(normalizeItem(item));
+      updateQuestProgress('pickup', { itemType: 'relic', zone: currentZone() });
+      audio.loot();
+      showToast('Relique récupérée');
+      return;
+    }
     state.player.inv.push(normalizeItem(item));
     audio.loot();
     showToast(`Loot: ${item.name}`);
@@ -1420,12 +1641,14 @@ button:active { transform: translateY(1px); }
   const spawnEnemies = () => {
     if (state.inHub) return;
     if (state.spawnTimer > 0) return;
-    if (state.enemies.length >= 12) return;
+    const nearby = state.enemies.filter(e => Math.abs(e.x - state.player.x) < 600 && Math.abs(e.y - state.player.y) < 600);
+    if (nearby.length >= 12) return;
     const zoneIndex = currentZone();
     if (state.zoneFlow[`zone-${zoneIndex}`]?.isHub) return;
-    for (let i = 0; i < 1; i++) {
-      const x = state.player.x + (Math.random() * 500 - 250);
-      const y = state.player.y + (Math.random() * 400 - 200);
+    const density = 1 + Math.floor(zoneIndex / 4);
+    for (let i = 0; i < density; i++) {
+      const x = state.player.x + (Math.random() * 520 - 260);
+      const y = state.player.y + (Math.random() * 420 - 210);
       if (!isSolidAt(x, y) && Math.hypot(x - state.player.x, y - state.player.y) > 120) {
         const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
         if (type.id === 'swarm') {
@@ -1435,7 +1658,7 @@ button:active { transform: translateY(1px); }
         } else {
           state.enemies.push(createEnemy(zoneIndex, x, y, type));
         }
-        state.spawnTimer = 1.2;
+        state.spawnTimer = 0.9;
       }
     }
   };
@@ -1482,8 +1705,11 @@ button:active { transform: translateY(1px); }
       for (let y = 0; y < HUB_MAP; y++) {
         for (let x = 0; x < HUB_MAP; x++) {
           const t = hubTileAt(x, y);
-          if (t === 8) mctx.fillStyle = '#a5f3fc';
-          else if (t === 2) mctx.fillStyle = '#86efac';
+          if (t === 8) mctx.fillStyle = '#60a5fa';
+          else if (t === 9) mctx.fillStyle = '#a16207';
+          else if (t === 10) mctx.fillStyle = '#475569';
+          else if (t === 11) mctx.fillStyle = '#4ade80';
+          else if (t === 12) mctx.fillStyle = '#94a3b8';
           else mctx.fillStyle = '#22c55e';
           mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
         }
@@ -1495,6 +1721,8 @@ button:active { transform: translateY(1px); }
       getActiveInteractables().forEach(it => {
         if (it.type === 'rift_return') drawDot(it.x, it.y, '#facc15', 3);
         if (it.type === 'rest') drawDot(it.x, it.y, '#22c55e', 3);
+        if (it.type === 'fountain') drawDot(it.x, it.y, '#60a5fa', 3);
+        if (it.type === 'notice') drawDot(it.x, it.y, '#a3e635', 3);
       });
       getActiveNpcs().forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.6));
       drawDot(state.player.x, state.player.y, '#22c55e', 3);
@@ -1566,7 +1794,7 @@ button:active { transform: translateY(1px); }
     getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && !it.active) return;
       if (it.type === 'altar' && !it.active) return;
-      if (['gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return'].includes(it.type)) {
+      if (['gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return', 'fountain', 'bench', 'notice', 'relic', 'shrine'].includes(it.type)) {
         targets.push({ x: it.x, y: it.y, type: it.type });
       }
     });
@@ -1638,6 +1866,10 @@ button:active { transform: translateY(1px); }
     const p = state.player;
     for (let i = state.enemies.length - 1; i >= 0; i--) {
       const e = state.enemies[i];
+      if (e.burn > 0) {
+        e.burn -= dt;
+        applySpellDamage(e, dt * 4, 'fire');
+      }
       if (e.poison > 0) {
         e.poison -= dt;
         applySpellDamage(e, dt * 3, e.poisonElement || 'poison');
@@ -1645,6 +1877,7 @@ button:active { transform: translateY(1px); }
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const dist2 = dx * dx + dy * dy;
+      const shock = e.shock > 0 ? 0.7 : 1;
       const slow = e.slow > 0 ? 0.5 : 1;
       if (dist2 < 220 * 220) {
         const dist = Math.sqrt(dist2) || 1;
@@ -1652,7 +1885,7 @@ button:active { transform: translateY(1px); }
           : e.kind === 'sniper' ? 35
             : e.kind === 'brute' ? 40
               : e.kind === 'swarm' ? 55
-                : 45) * slow;
+                : 45) * slow * shock;
         e.vx = (dx / dist) * speed * dt;
         e.vy = (dy / dist) * speed * dt;
         const nx = e.x + e.vx;
@@ -1695,19 +1928,27 @@ button:active { transform: translateY(1px); }
         if (e.kind === 'flying' || !isSolidAt(e.x, ny)) e.y = ny;
       }
       e.slow = Math.max(0, (e.slow || 0) - dt);
-      e.cooldown = Math.max(0, e.cooldown - dt);
+      e.cooldown = Math.max(0, e.cooldown - dt * (e.shock > 0 ? 0.6 : 1));
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
+      e.shock = Math.max(0, (e.shock || 0) - dt);
+      const farDx = p.x - e.x;
+      const farDy = p.y - e.y;
+      const farDist2 = farDx * farDx + farDy * farDy;
+      const enemyZone = Math.floor(e.x / (MAP * TILE));
+      if (farDist2 > 1100 * 1100 || enemyZone !== currentZone()) {
+        state.enemies.splice(i, 1);
+      }
     }
   };
 
   // Fix: melee checks previously only used the player center, so bosses could feel unhittable.
-  const bossHitCheck = (dmg, x, y, radius = 16) => {
+  const bossHitCheck = (dmg, x, y, radius = 16, source = 'player') => {
     if (!state.boss) return false;
     const dx = state.boss.x - x;
     const dy = state.boss.y - y;
     if (dx * dx + dy * dy < radius * radius) {
       state.boss.hp -= dmg;
-      applyLifesteal(dmg);
+      if (source === 'player') applyLifesteal(dmg);
       audio.hit();
       return true;
     }
@@ -1792,6 +2033,7 @@ button:active { transform: translateY(1px); }
         flow.keyDropped = true;
         flow.bossState.alive = false;
         flow.bossState.defeated = true;
+        updateQuestProgress('boss', { zone });
         state.zoneCorruption[zone] = 0;
         if (state.clearedZones < zone + 1) {
           state.clearedZones = zone + 1;
@@ -1826,15 +2068,27 @@ button:active { transform: translateY(1px); }
       c.healCooldown = Math.max(0, (c.healCooldown || 0) - dt);
       let nearest = null;
       let nearestDist = 999999;
-      state.enemies.forEach(e => {
-        const ex = e.x - c.x;
-        const ey = e.y - c.y;
-        const d2 = ex * ex + ey * ey;
-        if (d2 < 160 * 160 && d2 < nearestDist) {
-          nearestDist = d2;
-          nearest = e;
+      const boss = state.boss;
+      if (boss && boss.hp > 0) {
+        const bx = boss.x - c.x;
+        const by = boss.y - c.y;
+        const bd2 = bx * bx + by * by;
+        if (bd2 < 220 * 220) {
+          nearest = boss;
+          nearestDist = bd2;
         }
-      });
+      }
+      if (!nearest) {
+        state.enemies.forEach(e => {
+          const ex = e.x - c.x;
+          const ey = e.y - c.y;
+          const d2 = ex * ex + ey * ey;
+          if (d2 < 180 * 180 && d2 < nearestDist) {
+            nearestDist = d2;
+            nearest = e;
+          }
+        });
+      }
       if (nearest && c.cooldown <= 0) {
         const dmg = c.id === 'elyne' ? 3 : 5;
         const angle = Math.atan2(nearest.y - c.y, nearest.x - c.x);
@@ -1850,7 +2104,7 @@ button:active { transform: translateY(1px); }
           shape: 'orb',
           source: 'ally'
         });
-        c.cooldown = c.id === 'elyne' ? 1.3 : 0.9;
+        c.cooldown = c.id === 'elyne' ? 1.4 : 1.0;
       }
       if (c.id === 'elyne' && p.hp < p.hpMax * 0.6 && c.healCooldown <= 0) {
         p.hp = clamp(p.hp + 8, 0, p.hpMax);
@@ -1890,6 +2144,7 @@ button:active { transform: translateY(1px); }
             state.stats.kills += 1;
             state.player.xp += 10 + currentZone() * 5;
             state.gold += 3;
+            updateQuestProgress('kill', { kind: e.kind, zone: currentZone() });
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
             if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
           }
@@ -1937,31 +2192,40 @@ button:active { transform: translateY(1px); }
   };
 
   const spells = [
-    { id: 'bolt', name: 'Bolt', effect: 'bolt' },
-    { id: 'nova', name: 'Nova', effect: 'nova' },
-    { id: 'ice', name: 'Ice Spike', effect: 'ice' },
-    { id: 'fire', name: 'Fireball', effect: 'fire' },
-    { id: 'chain', name: 'Chain Lightning', effect: 'chain' },
-    { id: 'poison', name: 'Poison Cloud', effect: 'poison' },
-    { id: 'shield', name: 'Shield', effect: 'shield' },
-    { id: 'blink', name: 'Blink', effect: 'blink' },
-    { id: 'gravity', name: 'Gravity Pull', effect: 'gravity' },
-    { id: 'summon', name: 'Summon Orb', effect: 'summon' }
+    { id: 'bolt', name: 'Bolt', effect: 'bolt', element: 'lightning', cost: 18, cooldown: 1.2, iconKey: 'staff', desc: 'Projectile rapide, choc léger.' },
+    { id: 'nova', name: 'Nova', effect: 'nova', element: 'arcane', cost: 26, cooldown: 2.4, iconKey: 'amulet', desc: 'Onde courte autour du Marqué.' },
+    { id: 'ice', name: 'Ice Spike', effect: 'ice', element: 'ice', cost: 22, cooldown: 1.8, iconKey: 'staff', desc: 'Ralenti et perce la brume.' },
+    { id: 'fire', name: 'Fireball', effect: 'fire', element: 'fire', cost: 24, cooldown: 2.0, iconKey: 'staff', desc: 'Explosion ardente à l\'impact.' },
+    { id: 'chain', name: 'Chain Lightning', effect: 'chain', element: 'lightning', cost: 28, cooldown: 3.2, iconKey: 'amulet', desc: 'Saut d\'éclairs entre ennemis.' },
+    { id: 'poison', name: 'Poison Cloud', effect: 'poison', element: 'poison', cost: 20, cooldown: 3.0, iconKey: 'amulet', desc: 'Néfaste sur la durée.' },
+    { id: 'shield', name: 'Shield', effect: 'shield', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'ring', desc: 'Bouclier bref, défense accrue.' },
+    { id: 'blink', name: 'Blink', effect: 'blink', element: 'arcane', cost: 16, cooldown: 3.2, iconKey: 'boots', desc: 'Téléportation courte.' },
+    { id: 'gravity', name: 'Gravity Pull', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Ramène les ennemis.' },
+    { id: 'summon', name: 'Summon Orb', effect: 'summon', element: 'arcane', cost: 30, cooldown: 5.0, iconKey: 'ring', desc: 'Orbe orbitale protectrice.' }
   ];
 
   const openSpellWheel = () => {
     if (state.dead || state.spellWheel.open) return;
-    const unlocked = spells;
-    const picks = [];
-    while (picks.length < 3) {
-      const pick = unlocked[Math.floor(Math.random() * unlocked.length)];
-      if (!picks.find(p => p.id === pick.id)) picks.push(pick);
+    const unlocked = spells.filter(s => state.unlockedSpells.includes(s.id));
+    let picks = state.spellWheel.locked && state.spellWheel.options?.length ? state.spellWheel.options : [];
+    if (!picks.length) {
+      picks = [];
+      const count = Math.min(3, unlocked.length);
+      while (picks.length < count) {
+        const pick = unlocked[Math.floor(Math.random() * unlocked.length)];
+        if (!picks.find(p => p.id === pick.id)) picks.push(pick);
+      }
     }
-    state.spellWheel = { open: true, options: picks };
+    state.spellWheel = { open: true, options: picks, locked: state.spellWheel.locked };
     const wheel = document.getElementById('spell-wheel');
     wheel.style.display = 'flex';
     wheel.querySelectorAll('.slot').forEach((slot, idx) => {
-      slot.textContent = picks[idx].name;
+      const spell = picks[idx];
+      if (!spell) {
+        slot.innerHTML = '';
+        return;
+      }
+      slot.innerHTML = `<div class="icon" style="width:28px;height:28px;background:url(${iconDataUrl(spell.iconKey)}) center/contain no-repeat;"></div><div>${spell.name}</div><div class="small">${spell.desc}</div>`;
     });
     updateSpellWheelCenter();
     state.paused = true;
@@ -1976,7 +2240,7 @@ button:active { transform: translateY(1px); }
   const selectSpell = (spell) => {
     if (!spell) return;
     state.selectedSpell = spell;
-    console.debug('[spell] selected', spell.id);
+    state.spellWheel.locked = true;
     showToast(`Sort sélectionné: ${spell.name}`);
   };
 
@@ -1985,66 +2249,68 @@ button:active { transform: translateY(1px); }
       showToast('Aucun sort sélectionné');
       return;
     }
-    if (state.spellCooldown > 0) {
+    const spell = state.selectedSpell;
+    const nextReady = state.spellCooldowns[spell.id] || 0;
+    if (nextReady > state.time / 1000) {
       showToast('Sort en recharge');
       return;
     }
-    const spell = state.selectedSpell;
     const didCast = castSpell(spell);
     if (didCast) {
-      state.spellCooldown = 0.6;
+      state.spellCooldowns[spell.id] = (state.time / 1000) + spell.cooldown;
       updateBars();
     }
   };
 
   const updateSpellWheelCenter = () => {
-    const charges = Math.floor(state.player.mana / (state.player.manaMax / 3));
+    const charges = Math.floor(state.player.mana / 20);
     const center = document.querySelector('#spell-wheel .center');
-    if (center) center.textContent = `Mana ${charges}/3`;
+    if (center) center.textContent = `Mana ${state.player.mana.toFixed(0)}`;
   };
 
   const castSpell = (spell) => {
     if (state.dead) return;
     const p = state.player;
-    const cost = p.manaMax / 3;
+    const cost = spell.cost;
     if (p.mana < cost) {
       showToast('Mana insuffisant');
       audio.tone(120, 0.1, 'sine', 0.05);
-      console.debug('[spell] blocked', { mana: p.mana, cost });
       return false;
     }
     p.mana -= cost;
     updateSpellWheelCenter();
     showToast(`Sort: ${spell.name}`);
-    console.debug('[spell] cast', spell.id);
     const { camX, camY } = getCamera();
     const angle = Math.atan2(state.mouse.y + camY - state.player.y, state.mouse.x + camX - state.player.x);
+    const magicPower = p.atk * 0.6 + p.stats.spi * 2;
     if (spell.effect === 'bolt') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, life: 1.2, dmg: 16, size: 4, color: '#60a5fa', shape: 'orb', element: 'lightning' });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 280, vy: Math.sin(angle) * 280, life: 1.2, dmg: 12 + magicPower * 0.6, size: 4, color: '#60a5fa', shape: 'orb', element: 'lightning', shock: 1.2 });
     } else if (spell.effect === 'nova') {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
         if (dx * dx + dy * dy < 80 * 80) {
-          const dealt = applySpellDamage(e, 12, 'arcane');
+          const dealt = applySpellDamage(e, 10 + magicPower * 0.4, 'arcane');
           applyLifesteal(dealt);
         }
       });
     } else if (spell.effect === 'ice') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6, element: 'ice' });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 230, vy: Math.sin(angle) * 230, life: 1.1, dmg: 9 + magicPower * 0.35, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.8, element: 'ice' });
     } else if (spell.effect === 'fire') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire' });
+      state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 14 + magicPower * 0.6, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire', burn: 2.5 });
     } else if (spell.effect === 'chain') {
       let target = state.enemies[0];
       if (target) {
-        const dealt = applySpellDamage(target, 14, 'lightning');
+        const dealt = applySpellDamage(target, 12 + magicPower * 0.5, 'lightning');
+        target.shock = 1.4;
         applyLifesteal(dealt);
       }
       if (state.enemies[1]) {
-        const dealt = applySpellDamage(state.enemies[1], 10, 'lightning');
+        const dealt = applySpellDamage(state.enemies[1], 9 + magicPower * 0.3, 'lightning');
+        state.enemies[1].shock = 1.0;
         applyLifesteal(dealt);
       }
     } else if (spell.effect === 'poison') {
-      state.enemies.forEach(e => { e.poison = 2.5; e.poisonElement = 'poison'; });
+      state.enemies.forEach(e => { e.poison = 3.2; e.poisonElement = 'poison'; });
     } else if (spell.effect === 'shield') {
       applyTimedBonus('def', 4, 3000);
     } else if (spell.effect === 'blink') {
@@ -2053,9 +2319,10 @@ button:active { transform: translateY(1px); }
       state.enemies.forEach(e => {
         e.x += (p.x - e.x) * 0.1;
         e.y += (p.y - e.y) * 0.1;
+        e.slow = Math.max(e.slow || 0, 1.4);
       });
     } else if (spell.effect === 'summon') {
-      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
+      state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6 + magicPower * 0.2, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
     }
     return true;
   };
@@ -2075,7 +2342,7 @@ button:active { transform: translateY(1px); }
       if (!settings.lowParticles && Math.random() > 0.4) {
         state.particles.push({ x: pr.x, y: pr.y, vx: pr.vx * -0.05, vy: pr.vy * -0.05, life: 0.4, color: pr.color || '#facc15' });
       }
-      if (bossHitCheck(pr.dmg, pr.x, pr.y)) {
+      if (bossHitCheck(pr.dmg, pr.x, pr.y, 16, pr.source === 'ally' ? 'ally' : 'player')) {
         pr.life = 0;
       }
       if (pr.source === 'enemy') {
@@ -2104,6 +2371,8 @@ button:active { transform: translateY(1px); }
             e.hp -= dealt;
             if (pr.source !== 'ally') applyLifesteal(dealt);
           }
+          if (pr.burn) e.burn = Math.max(e.burn || 0, pr.burn);
+          if (pr.shock) e.shock = Math.max(e.shock || 0, pr.shock);
           if (pr.slow) e.slow = pr.slow;
           if (pr.explode) {
             state.enemies.forEach(other => {
@@ -2117,6 +2386,7 @@ button:active { transform: translateY(1px); }
                   other.hp -= 8;
                   if (pr.source !== 'ally') applyLifesteal(8);
                 }
+                if (pr.burn) other.burn = Math.max(other.burn || 0, pr.burn * 0.7);
               }
             });
           }
@@ -2127,6 +2397,7 @@ button:active { transform: translateY(1px); }
             state.stats.kills += 1;
             state.player.xp += 10 + currentZone() * 5;
             state.gold += 3;
+            updateQuestProgress('kill', { kind: e.kind, zone: currentZone() });
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
             if (Math.random() > 0.92) spawnDrop({ type: 'potion', name: 'Potion' }, e.x + 4, e.y + 4);
           }
@@ -2343,6 +2614,7 @@ button:active { transform: translateY(1px); }
       flow.orbsDestroyed += 1;
       state.zoneCorruption[zone] = clamp(state.zoneCorruption[zone] - 0.34, 0, 1);
       state.gold += 5; state.materials += 1; state.corruptionAbsorbed += 1;
+      updateQuestProgress('orb', { zone });
       showToast(`Noyau détruit ${flow.orbsDestroyed}/3`);
       if (flow.orbsDestroyed >= 3) {
         flow.altar.active = true;
@@ -2374,6 +2646,22 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
+    const relic = nearest(getActiveInteractables().filter(i => i.type === 'relic'), ORB_RANGE);
+    if (relic) {
+      state.interactables = state.interactables.filter(i => i !== relic);
+      flow.event.done = true;
+      addItem({ type: 'relic', name: 'Relique ancienne' });
+      updateQuestProgress('visit', { zone });
+      return;
+    }
+    const shrine = nearest(getActiveInteractables().filter(i => i.type === 'shrine'), ORB_RANGE);
+    if (shrine) {
+      flow.event.done = true;
+      state.interactables = state.interactables.filter(i => i !== shrine);
+      showToast('Le sanctuaire vous bénit.');
+      updateQuestProgress('visit', { zone });
+      return;
+    }
     const rest = nearest(getActiveInteractables().filter(i => i.type === 'rest'), REST_RANGE);
     if (state.inHub && rest) {
       state.player.hp = state.player.hpMax;
@@ -2381,8 +2669,29 @@ button:active { transform: translateY(1px); }
       showToast('Repos accordé.');
       return;
     }
+    if (state.inHub) {
+      const fountain = nearest(getActiveInteractables().filter(i => i.type === 'fountain'), REST_RANGE);
+      if (fountain) {
+        state.player.hp = state.player.hpMax;
+        state.player.mana = state.player.manaMax;
+        showToast('La fontaine apaise vos blessures.');
+        return;
+      }
+      const bench = nearest(getActiveInteractables().filter(i => i.type === 'bench'), REST_RANGE);
+      if (bench) {
+        showToast('Vous reprenez votre souffle.');
+        return;
+      }
+      const notice = nearest(getActiveInteractables().filter(i => i.type === 'notice'), REST_RANGE);
+      if (notice) {
+        openPanel('journal');
+        renderJournal();
+        return;
+      }
+    }
     const nearNpc = nearest(getActiveNpcs(), NPC_RANGE);
     if (nearNpc) {
+      updateQuestProgress('talk', { npc: nearNpc.name, zone });
       if (state.inHub) {
         renderHubPanel();
         openPanel('hub-panel');
@@ -2438,12 +2747,13 @@ button:active { transform: translateY(1px); }
     const dt = Math.min(0.033, (ts - state.time) / 1000 || 0.016);
     state.time = ts;
     state.runTime += dt;
-    state.spellCooldown = Math.max(0, state.spellCooldown - dt);
     const zoneNow = currentZone();
     initZoneFlow(zoneNow);
     if (state.activeZone !== zoneNow) {
       syncBackGate(zoneNow);
       state.activeZone = zoneNow;
+      state.spawnTimer = 0;
+      updateQuestProgress('enterZone', { zone: zoneNow });
     }
     updatePlayer(dt);
     if (!state.inHub) {
@@ -2454,6 +2764,37 @@ button:active { transform: translateY(1px); }
       spawnEnemies();
       updateProjectiles(dt);
       updateDrops(dt);
+      const flow = state.zoneFlow[`zone-${zoneNow}`];
+      if (flow?.event && !flow.event.done) {
+        if (flow.event.type === 'survive') {
+          const dx = state.player.x - flow.event.x;
+          const dy = state.player.y - flow.event.y;
+          if (dx * dx + dy * dy < flow.event.radius * flow.event.radius) {
+            flow.event.timer += dt;
+            if (flow.event.timer >= 30) {
+              flow.event.done = true;
+              showToast('Survie accomplie.');
+              updateQuestProgress('visit', { zone: zoneNow });
+            }
+          } else {
+            flow.event.timer = Math.max(0, flow.event.timer - dt * 2);
+          }
+        }
+        if (flow.event.type === 'elite' && !flow.event.spawned) {
+          const dx = state.player.x - flow.event.x;
+          const dy = state.player.y - flow.event.y;
+          if (dx * dx + dy * dy < 200 * 200) {
+            const elite = createEnemy(zoneNow, flow.event.x, flow.event.y, ENEMY_TYPES.find(t => t.id === 'brute'));
+            elite.hp *= 2.5;
+            elite.hpMax = elite.hp;
+            elite.atk += 6;
+            elite.kind = 'elite';
+            elite.color = '#fb7185';
+            state.enemies.push(elite);
+            flow.event.spawned = true;
+          }
+        }
+      }
     } else {
       updateCompanions(dt);
       state.projectiles.length = 0;
@@ -2467,6 +2808,9 @@ button:active { transform: translateY(1px); }
         `seed: ${state.seed}`,
         `act: ${Math.floor(currentZone() / 5) + 1}`,
         `zone: ${(currentZone() % 5) + 1}`,
+        `spawnTimer: ${state.spawnTimer.toFixed(2)}`,
+        `enemies: ${state.enemies.length}`,
+        `inHub: ${state.inHub}`,
         `mana: ${state.player.mana.toFixed(0)}/${state.player.manaMax}`,
         `stamina: ${state.player.stam.toFixed(0)}/${state.player.stamMax}`
       ].join('\n');
@@ -2497,13 +2841,17 @@ button:active { transform: translateY(1px); }
         }
         switch (t) {
           case 0: ctx.fillStyle = '#1a202c'; break;
-          case 2: ctx.fillStyle = state.inHub ? '#86efac' : '#123a44'; break;
+          case 2: ctx.fillStyle = state.inHub ? '#4ade80' : '#123a44'; break;
           case 3: ctx.fillStyle = '#3b3b45'; break;
           case 4: ctx.fillStyle = '#1f2d1f'; break;
           case 5: ctx.fillStyle = '#2a2a32'; break;
           case 6: ctx.fillStyle = '#7dd3fc'; break;
           case 7: ctx.fillStyle = '#22c55e'; break;
-          case 8: ctx.fillStyle = '#a5f3fc'; break;
+          case 8: ctx.fillStyle = '#60a5fa'; break;
+          case 9: ctx.fillStyle = '#b45309'; break;
+          case 10: ctx.fillStyle = '#475569'; break;
+          case 11: ctx.fillStyle = '#4ade80'; break;
+          case 12: ctx.fillStyle = '#94a3b8'; break;
           default: ctx.fillStyle = '#0b0f14';
         }
         ctx.fillRect(px, py, TILE, TILE);
@@ -2525,6 +2873,11 @@ button:active { transform: translateY(1px); }
       else if (it.type === 'gate') ctx.fillStyle = it.locked ? '#4b5563' : '#16a34a';
       else if (it.type === 'rift_sanctuary' || it.type === 'rift_return') ctx.fillStyle = '#fef3c7';
       else if (it.type === 'rest') ctx.fillStyle = '#22c55e';
+      else if (it.type === 'relic') ctx.fillStyle = '#eab308';
+      else if (it.type === 'shrine') ctx.fillStyle = '#22d3ee';
+      else if (it.type === 'fountain') ctx.fillStyle = '#60a5fa';
+      else if (it.type === 'bench') ctx.fillStyle = '#f59e0b';
+      else if (it.type === 'notice') ctx.fillStyle = '#a3e635';
       else return;
       ctx.fillRect(it.x - camX - 4, it.y - camY - 4, 8, 8);
     });
@@ -2538,6 +2891,11 @@ button:active { transform: translateY(1px); }
               : t.type === 'rift_return' ? 'Retour'
                 : t.type === 'npc' ? (t.role && t.role.toLowerCase().includes('marchand') ? 'Marchand' : 'PNJ')
                   : t.type === 'rest' ? 'Repos'
+                    : t.type === 'fountain' ? 'Fontaine'
+                      : t.type === 'bench' ? 'Banc'
+                    : t.type === 'notice' ? 'Panneau'
+                      : t.type === 'relic' ? 'Relique'
+                        : t.type === 'shrine' ? 'Sanctuaire'
                     : 'Potion';
       ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
         : t.type === 'orb' ? '#a855f7'
@@ -2546,6 +2904,11 @@ button:active { transform: translateY(1px); }
               : t.type === 'rift_return' ? '#fef3c7'
                 : t.type === 'npc' ? '#22c55e'
                   : t.type === 'rest' ? '#22c55e'
+                    : t.type === 'fountain' ? '#60a5fa'
+                      : t.type === 'bench' ? '#f59e0b'
+                        : t.type === 'notice' ? '#a3e635'
+                          : t.type === 'relic' ? '#eab308'
+                            : t.type === 'shrine' ? '#22d3ee'
                     : '#facc15';
       ctx.beginPath();
       ctx.arc(sx, sy, 10, 0, Math.PI * 2);
@@ -2556,6 +2919,21 @@ button:active { transform: translateY(1px); }
       ctx.fillStyle = '#cbd5f5';
       ctx.fillText(label, sx + 12, sy + 12);
     });
+    if (!state.inHub) {
+      const flow = state.zoneFlow[`zone-${currentZone()}`];
+      if (flow?.event && !flow.event.done) {
+        if (flow.event.type === 'survive') {
+          ctx.strokeStyle = 'rgba(34,211,238,0.6)';
+          ctx.beginPath();
+          ctx.arc(flow.event.x - camX, flow.event.y - camY, flow.event.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        if (flow.event.type === 'elite' && !flow.event.spawned) {
+          ctx.fillStyle = '#fb7185';
+          ctx.fillRect(flow.event.x - camX - 4, flow.event.y - camY - 4, 8, 8);
+        }
+      }
+    }
     if (!state.inHub) {
       state.drops.forEach(d => {
         const bob = Math.sin(d.bob) * 3;
@@ -2652,10 +3030,17 @@ button:active { transform: translateY(1px); }
       state.player.weapon = base.weapon;
     }
     if (!state.stats) state.stats = { kills: 0, loot: 0 };
+    if (!state.quests || !Object.values(state.quests).some(q => q.steps)) {
+      initQuestState();
+    }
     if (!state.explored) state.explored = {};
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.selectedSpell) state.selectedSpell = null;
+    if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
+      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire'];
+    }
+    if (!state.spellCooldowns) state.spellCooldowns = {};
     if (!state.player.manaMax || state.player.manaMax <= 0) {
       const base = classes[state.player.classKey] || classes.blade;
       state.player.manaMax = base.mana;
@@ -2676,6 +3061,7 @@ button:active { transform: translateY(1px); }
     Object.values(state.zoneFlow || {}).forEach(flow => {
       if (!flow.bossState) flow.bossState = { spawned: false, alive: false, defeated: false };
       if (!flow.riftSpawned) flow.riftSpawned = false;
+      if (!flow.event) flow.event = { type: zoneEventTypes[0], x: 0, y: 0, radius: 60, timer: 0, done: false, spawned: false };
     });
     if (state.boss) {
       const zone = currentZone();
@@ -2745,7 +3131,17 @@ button:active { transform: translateY(1px); }
       const wrapper = document.createElement('div');
       wrapper.className = 'inv-slot';
       wrapper.dataset.equipSlot = slot;
-      wrapper.innerHTML = `<div>${label}</div><div class="small">${equipped ? `Équipé: ${equipped.name}` : 'Vide'}</div>`;
+      const icon = document.createElement('div');
+      icon.className = 'slot-icon';
+      if (equipped) icon.style.backgroundImage = `url(${iconDataUrl(iconForItem(equipped))})`;
+      const name = document.createElement('div');
+      name.textContent = label;
+      const info = document.createElement('div');
+      info.className = 'small';
+      info.textContent = equipped ? `Équipé: ${equipped.name}` : 'Vide';
+      wrapper.appendChild(icon);
+      wrapper.appendChild(name);
+      wrapper.appendChild(info);
       return wrapper;
     };
     left.appendChild(slotLabel('weapon', 'Arme'));
@@ -2767,7 +3163,17 @@ button:active { transform: translateY(1px); }
       const cell = document.createElement('div');
       const isEquipped = it.slot && state.player.equip[it.slot] && state.player.equip[it.slot].id === it.id;
       cell.className = `inv-cell ${it.rarity || ''} ${isEquipped ? 'equipped' : ''}`;
-      cell.innerHTML = `<div>${it.name}</div>${isEquipped ? '<div class="equipped-badge">Équipé</div>' : ''}`;
+      cell.dataset.rarity = it.rarity || 'common';
+      const icon = document.createElement('div');
+      icon.className = 'icon';
+      icon.style.backgroundImage = `url(${iconDataUrl(iconForItem(it))})`;
+      cell.appendChild(icon);
+      if (isEquipped) {
+        const badge = document.createElement('div');
+        badge.className = 'equipped-badge';
+        badge.textContent = 'Équipé';
+        cell.appendChild(badge);
+      }
       cell.dataset.equip = idx;
       cell.dataset.itemIndex = idx;
       grid.appendChild(cell);
@@ -2829,12 +3235,16 @@ button:active { transform: translateY(1px); }
     const bonusLines = buildBonusLines(bonuses);
     const deltaLines = compare ? buildDeltaLines(bonuses, compare) : [];
     const rarityLabel = item.rarity ? item.rarity[0].toUpperCase() + item.rarity.slice(1) : 'Commun';
+    const icon = iconDataUrl(iconForItem(item));
     tooltip.innerHTML = `
-      <div class="title">${item.name}</div>
-      <div class="line dim">Slot: ${item.slot || '—'} · ${rarityLabel}</div>
+      <div class="head">
+        <div class="icon" style="background-image:url(${icon})"></div>
+        <div class="title">${item.name}</div>
+      </div>
+      <div class="line dim">Slot: ${item.slot || item.type || '—'} · ${rarityLabel}</div>
       ${item.affix ? `<div class="line dim">Affixe: ${item.affix}</div>` : ''}
       ${bonusLines.map(line => `<div class="line">${line}</div>`).join('')}
-      ${deltaLines.length ? `<div class="delta ${deltaLines.some(d => d.diff < 0) ? 'negative' : 'positive'}">Δ ${deltaLines.map(d => d.text).join(' · ')}</div>` : ''}
+      ${deltaLines.length ? `<div class="delta ${deltaLines.some(d => d.diff < 0) ? 'negative' : 'positive'}">Comparaison: ${deltaLines.map(d => d.text).join(' · ')}</div>` : ''}
     `;
     tooltip.style.display = 'block';
     const rect = tooltip.getBoundingClientRect();
@@ -2884,10 +3294,18 @@ button:active { transform: translateY(1px); }
     questTab.innerHTML = '';
     loreTab.innerHTML = '';
     quests.forEach(q => {
-      const done = state.quests[q.id]?.done;
+      const progress = state.quests[q.id];
+      const done = progress?.done;
+      const step = progress?.steps?.[progress.stepIndex];
       const div = document.createElement('div');
       div.className = 'item';
-      div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span><div>${q.desc}</div>`;
+      div.innerHTML = `
+        <strong>${q.title}</strong>
+        <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>
+        <div class="small">${q.lore}</div>
+        <div>${step ? step.desc : 'Objectif accompli.'}</div>
+        ${step ? `<div class="small">Progression: ${step.progress}/${step.goal}</div>` : ''}
+      `;
       questTab.appendChild(div);
     });
     lore.forEach((entry, i) => {
@@ -3042,6 +3460,7 @@ button:active { transform: translateY(1px); }
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     applyEquipmentStats();
+    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire'];
     state.running = true;
     state.paused = false;
     state.dead = false;
@@ -3070,8 +3489,7 @@ button:active { transform: translateY(1px); }
     state.materials = 0;
     state.gold = 0;
     state.corruptionAbsorbed = 0;
-    state.quests = {};
-    quests.forEach(q => state.quests[q.id] = { done: false });
+    initQuestState();
     lore.forEach((_, i) => state.loreFound[i] = false);
     buildNpcInstances();
     state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
