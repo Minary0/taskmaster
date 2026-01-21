@@ -64,6 +64,11 @@ button:active { transform: translateY(1px); }
 .bar.mana > span { background: linear-gradient(90deg, #00338b, #3388ff); }
 .small { font-size: 12px; color: var(--text-dim); }
 
+#bossHud { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(360px, 70vw); display: none; pointer-events: none; text-align: center; z-index: 2; }
+#bossHud .boss-name { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #fca5a5; margin-bottom: 4px; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
+#bossHud .boss-bar { position: relative; height: 12px; background: #1a0f0f; border: 1px solid #2a3144; box-shadow: 0 0 6px rgba(0,0,0,0.8); }
+#bossHud .boss-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #7f1d1d, #ef4444); }
+
 #minimap { width: 120px; height: 120px; border: 2px solid var(--ui-border); background: #000; opacity: 0.85; }
 
 .hud-compact #hud { padding: calc(6px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) 6px calc(6px + env(safe-area-inset-left)); }
@@ -84,6 +89,14 @@ button:active { transform: translateY(1px); }
 
 #toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); background: rgba(8,10,16,0.9); border: 1px solid #2a3144; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease; }
 #toast.show { opacity: 1; }
+
+#item-tooltip { position: fixed; z-index: 50; pointer-events: none; background: rgba(10,12,20,0.96); border: 1px solid #2a3144; padding: 8px 10px; border-radius: 6px; min-width: 160px; max-width: 260px; box-shadow: 0 0 12px rgba(0,0,0,0.8); display: none; }
+#item-tooltip .title { font-family: "Cinzel", "Georgia", serif; font-size: 13px; margin-bottom: 4px; color: var(--accent); }
+#item-tooltip .line { font-size: 12px; color: var(--text-main); }
+#item-tooltip .line.dim { color: var(--text-dim); }
+#item-tooltip .delta { font-size: 11px; margin-top: 4px; }
+#item-tooltip .delta.positive { color: #86efac; }
+#item-tooltip .delta.negative { color: #fca5a5; }
 
 .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tabs button.active { border-color: var(--accent); }
@@ -137,6 +150,10 @@ button:active { transform: translateY(1px); }
       <div id="questText" class="small">Objectif</div>
       <canvas id="minimap" width="120" height="120"></canvas>
     </div>
+  </div>
+  <div id="bossHud">
+    <div class="boss-name" id="bossName">Seigneur</div>
+    <div class="boss-bar"><span id="bossFill"></span></div>
   </div>
 
   <div id="menu" class="overlay" style="display:flex;">
@@ -319,6 +336,7 @@ button:active { transform: translateY(1px); }
   </div>
 
   <div id="toast"></div>
+  <div id="item-tooltip"></div>
   <div id="spell-wheel">
     <div class="wheel">
       <div class="slot top" data-slot="0"></div>
@@ -609,6 +627,29 @@ button:active { transform: translateY(1px); }
   const joyVec = { x: 0, y: 0 };
 
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const STAT_LABELS = {
+    atk: 'Dégâts',
+    def: 'Défense',
+    hpMax: 'PV',
+    manaMax: 'Mana',
+    stamMax: 'Endurance',
+    speed: 'Vitesse',
+    crit: 'Critique',
+    lifesteal: 'Vol de vie'
+  };
+
+  const makeEmptyBonuses = () => ({
+    atk: 0, def: 0, hpMax: 0, manaMax: 0, stamMax: 0, speed: 0, crit: 0, lifesteal: 0
+  });
+
+  const addBonuses = (base, extra) => {
+    const out = { ...base };
+    Object.keys(out).forEach((key) => {
+      out[key] += extra?.[key] || 0;
+    });
+    return out;
+  };
 
   const rand = (seed) => {
     let s = seed >>> 0;
@@ -1002,6 +1043,7 @@ button:active { transform: translateY(1px); }
       weapon: base.weapon,
       size: 4,
       speed: base.speed,
+      lifesteal: 0,
       level: 1,
       xp: 0,
       xpNext: 60,
@@ -1009,6 +1051,17 @@ button:active { transform: translateY(1px); }
       stats: { str: 5, agi: 5, spi: 5, vit: 5 },
       inv: [],
       equip: { weapon: null, armor: null, helm: null, boots: null, amulet: null, ring: null, gloves: null },
+      baseStats: {
+        hpMax: base.hp,
+        manaMax: base.mana,
+        stamMax: base.stam,
+        atk: base.atk,
+        def: base.def,
+        speed: base.speed,
+        crit: base.crit,
+        lifesteal: 0
+      },
+      tempBonuses: makeEmptyBonuses(),
       dashCooldown: 0,
       skillCooldown: 0,
       iFrames: 0,
@@ -1158,6 +1211,108 @@ button:active { transform: translateY(1px); }
     audio.ambient(currentZone());
   };
 
+  const getItemBonuses = (item) => {
+    if (!item || item.type) return makeEmptyBonuses();
+    if (item.bonuses) return { ...makeEmptyBonuses(), ...item.bonuses };
+    const power = item.power || 1;
+    const bonuses = makeEmptyBonuses();
+    if (item.slot === 'weapon') bonuses.atk += 3 + power * 2;
+    if (item.slot === 'armor') { bonuses.def += 2 + power; bonuses.hpMax += 6 + power * 2; }
+    if (item.slot === 'helm') { bonuses.def += 1 + Math.floor(power / 2); bonuses.hpMax += 3 + power; }
+    if (item.slot === 'boots') bonuses.speed += 4 + power * 1.5;
+    if (item.slot === 'amulet') bonuses.manaMax += 12 + power * 3;
+    if (item.slot === 'ring') bonuses.crit += 0.015 + power * 0.003;
+    if (item.slot === 'gloves') bonuses.atk += 1 + power;
+    if (item.affix === '+atk') bonuses.atk += 2 + power;
+    if (item.affix === '+def') bonuses.def += 2 + Math.floor(power / 2);
+    if (item.affix === '+crit') bonuses.crit += 0.02 + power * 0.004;
+    if (item.affix === '+stamina') bonuses.stamMax += 10 + power * 3;
+    if (item.affix === '+resist brume') { bonuses.def += 1 + Math.floor(power / 2); bonuses.hpMax += 4 + power * 2; }
+    if (item.affix === '+lifesteal') bonuses.lifesteal += 0.03 + power * 0.005;
+    if (item.affix === '+mana regen') bonuses.manaMax += 12 + power * 3;
+    item.bonuses = bonuses;
+    return bonuses;
+  };
+
+  const normalizeItem = (item, zoneIndex = currentZone()) => {
+    if (!item || item.type) return item;
+    if (!item.id) item.id = `it-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (!item.power) item.power = zoneIndex + 1;
+    item.bonuses = getItemBonuses(item);
+    return item;
+  };
+
+  const getEquipmentBonuses = () => {
+    if (!state.player) return makeEmptyBonuses();
+    return Object.values(state.player.equip || {}).reduce((acc, item) => {
+      if (!item) return acc;
+      return addBonuses(acc, getItemBonuses(item));
+    }, makeEmptyBonuses());
+  };
+
+  const ensureBaseStats = () => {
+    if (!state.player) return;
+    if (!state.player.tempBonuses) state.player.tempBonuses = makeEmptyBonuses();
+    if (!state.player.baseStats) {
+      const equipBonuses = getEquipmentBonuses();
+      state.player.baseStats = {
+        hpMax: state.player.hpMax - equipBonuses.hpMax,
+        manaMax: state.player.manaMax - equipBonuses.manaMax,
+        stamMax: state.player.stamMax - equipBonuses.stamMax,
+        atk: state.player.atk - equipBonuses.atk,
+        def: state.player.def - equipBonuses.def,
+        speed: state.player.speed - equipBonuses.speed,
+        crit: state.player.crit - equipBonuses.crit,
+        lifesteal: (state.player.lifesteal || 0) - equipBonuses.lifesteal
+      };
+    }
+  };
+
+  const applyEquipmentStats = () => {
+    if (!state.player) return;
+    ensureBaseStats();
+    const equipBonuses = getEquipmentBonuses();
+    const temp = state.player.tempBonuses || makeEmptyBonuses();
+    const base = state.player.baseStats || makeEmptyBonuses();
+    const combined = addBonuses(addBonuses(base, equipBonuses), temp);
+    state.player.atk = Math.max(1, combined.atk);
+    state.player.def = Math.max(0, combined.def);
+    state.player.hpMax = Math.max(1, combined.hpMax);
+    state.player.manaMax = Math.max(1, combined.manaMax);
+    state.player.stamMax = Math.max(1, combined.stamMax);
+    state.player.speed = Math.max(30, combined.speed);
+    state.player.crit = Math.max(0, combined.crit);
+    state.player.lifesteal = Math.max(0, combined.lifesteal);
+    state.player.hp = clamp(state.player.hp, 0, state.player.hpMax);
+    state.player.mana = clamp(state.player.mana, 0, state.player.manaMax);
+    state.player.stam = clamp(state.player.stam, 0, state.player.stamMax);
+    state.player.equipBonuses = equipBonuses;
+  };
+
+  const applyBaseStatDelta = (delta, { refill = false } = {}) => {
+    ensureBaseStats();
+    Object.entries(delta).forEach(([key, value]) => {
+      state.player.baseStats[key] = (state.player.baseStats[key] || 0) + value;
+    });
+    applyEquipmentStats();
+    if (delta.hpMax) state.player.hp = clamp(state.player.hp + delta.hpMax, 0, state.player.hpMax);
+    if (delta.manaMax) state.player.mana = clamp(state.player.mana + delta.manaMax, 0, state.player.manaMax);
+    if (delta.stamMax) state.player.stam = clamp(state.player.stam + delta.stamMax, 0, state.player.stamMax);
+    if (refill) state.player.hp = state.player.hpMax;
+  };
+
+  const applyTimedBonus = (stat, value, durationMs) => {
+    if (!state.player) return;
+    ensureBaseStats();
+    state.player.tempBonuses[stat] = (state.player.tempBonuses[stat] || 0) + value;
+    applyEquipmentStats();
+    setTimeout(() => {
+      if (!state.player) return;
+      state.player.tempBonuses[stat] = (state.player.tempBonuses[stat] || 0) - value;
+      applyEquipmentStats();
+    }, durationMs);
+  };
+
   const rollItem = (zoneIndex) => {
     const rarityRoll = Math.random();
     let rarity = 'common';
@@ -1168,14 +1323,14 @@ button:active { transform: translateY(1px); }
     const slot = slots[Math.floor(Math.random() * slots.length)];
     const affixes = ['+crit', '+stamina', '+resist brume', '+lifesteal', '+atk', '+def', '+mana regen'];
     const affix = affixes[Math.floor(Math.random() * affixes.length)];
-    return {
+    return normalizeItem({
       id: `it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: `${slot} ${rarity}`,
       slot,
       rarity,
       affix,
       power: zoneIndex + 1
-    };
+    }, zoneIndex);
   };
 
   const addItem = (item) => {
@@ -1192,7 +1347,7 @@ button:active { transform: translateY(1px); }
       audio.loot();
       return;
     }
-    state.player.inv.push(item);
+    state.player.inv.push(normalizeItem(item));
     audio.loot();
     showToast(`Loot: ${item.name}`);
   };
@@ -1230,7 +1385,9 @@ button:active { transform: translateY(1px); }
 
   const applySpellDamage = (enemy, amount, element) => {
     const mult = getResistMultiplier(enemy, element);
-    enemy.hp -= Math.max(1, amount * mult);
+    const dmg = Math.max(1, amount * mult);
+    enemy.hp -= dmg;
+    return dmg;
   };
 
   const createEnemy = (zoneIndex, x, y, forcedType = null) => {
@@ -1303,6 +1460,14 @@ button:active { transform: translateY(1px); }
       const flow = state.zoneFlow[`zone-${zone.id}`];
       const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
       document.getElementById('questText').textContent = `Objectif: ${obj}`;
+    }
+    const bossHud = document.getElementById('bossHud');
+    if (state.boss && !state.inHub) {
+      bossHud.style.display = 'block';
+      document.getElementById('bossName').textContent = state.boss.name || 'Seigneur';
+      document.getElementById('bossFill').style.width = `${(state.boss.hp / state.boss.hpMax) * 100}%`;
+    } else {
+      bossHud.style.display = 'none';
     }
   };
 
@@ -1542,6 +1707,7 @@ button:active { transform: translateY(1px); }
     const dy = state.boss.y - y;
     if (dx * dx + dy * dy < radius * radius) {
       state.boss.hp -= dmg;
+      applyLifesteal(dmg);
       audio.hit();
       return true;
     }
@@ -1693,6 +1859,12 @@ button:active { transform: translateY(1px); }
     });
   };
 
+  const applyLifesteal = (dmg) => {
+    if (state.player.lifesteal > 0 && dmg > 0) {
+      state.player.hp = clamp(state.player.hp + dmg * state.player.lifesteal, 0, state.player.hpMax);
+    }
+  };
+
   const doAttack = () => {
     if (state.dead) return;
     const p = state.player;
@@ -1709,7 +1881,9 @@ button:active { transform: translateY(1px); }
         const dx = e.x - p.x;
         const dy = e.y - p.y;
         if (dx * dx + dy * dy < range * range) {
-          e.hp -= Math.max(1, p.atk - e.def);
+          const dmg = Math.max(1, p.atk - e.def);
+          e.hp -= dmg;
+          applyLifesteal(dmg);
           audio.hit();
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
@@ -1850,7 +2024,10 @@ button:active { transform: translateY(1px); }
     } else if (spell.effect === 'nova') {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
-        if (dx * dx + dy * dy < 80 * 80) applySpellDamage(e, 12, 'arcane');
+        if (dx * dx + dy * dy < 80 * 80) {
+          const dealt = applySpellDamage(e, 12, 'arcane');
+          applyLifesteal(dealt);
+        }
       });
     } else if (spell.effect === 'ice') {
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, life: 1.1, dmg: 10, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.6, element: 'ice' });
@@ -1858,12 +2035,18 @@ button:active { transform: translateY(1px); }
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 210, vy: Math.sin(angle) * 210, life: 1.0, dmg: 18, size: 5, color: '#f97316', shape: 'orb', explode: true, element: 'fire' });
     } else if (spell.effect === 'chain') {
       let target = state.enemies[0];
-      if (target) applySpellDamage(target, 14, 'lightning');
-      if (state.enemies[1]) applySpellDamage(state.enemies[1], 10, 'lightning');
+      if (target) {
+        const dealt = applySpellDamage(target, 14, 'lightning');
+        applyLifesteal(dealt);
+      }
+      if (state.enemies[1]) {
+        const dealt = applySpellDamage(state.enemies[1], 10, 'lightning');
+        applyLifesteal(dealt);
+      }
     } else if (spell.effect === 'poison') {
       state.enemies.forEach(e => { e.poison = 2.5; e.poisonElement = 'poison'; });
     } else if (spell.effect === 'shield') {
-      p.def += 4; setTimeout(() => { p.def -= 4; }, 3000);
+      applyTimedBonus('def', 4, 3000);
     } else if (spell.effect === 'blink') {
       p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
     } else if (spell.effect === 'gravity') {
@@ -1914,9 +2097,12 @@ button:active { transform: translateY(1px); }
         const dy = e.y - pr.y;
         if (dx * dx + dy * dy < 12 * 12) {
           if (pr.element) {
-            applySpellDamage(e, pr.dmg, pr.element);
+            const dealt = applySpellDamage(e, pr.dmg, pr.element);
+            if (pr.source !== 'ally') applyLifesteal(dealt);
           } else {
-            e.hp -= Math.max(1, pr.dmg - e.def);
+            const dealt = Math.max(1, pr.dmg - e.def);
+            e.hp -= dealt;
+            if (pr.source !== 'ally') applyLifesteal(dealt);
           }
           if (pr.slow) e.slow = pr.slow;
           if (pr.explode) {
@@ -1925,9 +2111,11 @@ button:active { transform: translateY(1px); }
               const ey = other.y - pr.y;
               if (ex * ex + ey * ey < 50 * 50) {
                 if (pr.element) {
-                  applySpellDamage(other, 8, pr.element);
+                  const dealt = applySpellDamage(other, 8, pr.element);
+                  if (pr.source !== 'ally') applyLifesteal(dealt);
                 } else {
                   other.hp -= 8;
+                  if (pr.source !== 'ally') applyLifesteal(8);
                 }
               }
             });
@@ -1989,8 +2177,7 @@ button:active { transform: translateY(1px); }
       return 'shop';
     }
     if (npc.role === 'Forge') {
-      state.player.atk += 1;
-      state.player.def += 1;
+      applyBaseStatDelta({ atk: 1, def: 1 });
       showToast('Forge: +1 ATK / +1 DEF');
       return 'action';
     }
@@ -2003,8 +2190,7 @@ button:active { transform: translateY(1px); }
       }
       state.gold -= costGold;
       state.materials -= costMat;
-      state.player.hpMax += 6;
-      state.player.atk += 1;
+      applyBaseStatDelta({ hpMax: 6, atk: 1 });
       state.companions.forEach(c => { c.hpMax += 6; c.hp += 6; });
       showToast('Entraînement accompli');
       return 'action';
@@ -2052,8 +2238,7 @@ button:active { transform: translateY(1px); }
       state.player.level++;
       state.player.xpNext = Math.floor(state.player.xpNext * 1.2);
       state.player.statPoints += 2;
-      state.player.hpMax += 10;
-      state.player.hp = state.player.hpMax;
+      applyBaseStatDelta({ hpMax: 10 }, { refill: true });
       showToast('Niveau supérieur!');
     }
   };
@@ -2105,12 +2290,33 @@ button:active { transform: translateY(1px); }
         return;
       }
       initZoneFlow(targetZone);
-      const spawnX = direction === 'forward'
+      const targetFlow = state.zoneFlow[`zone-${targetZone}`];
+      const targetGate = direction === 'forward' ? targetFlow.backGate : targetFlow.gate;
+      let spawnX = direction === 'forward'
         ? targetZone * MAP * TILE + (WALL_THICKNESS + 2) * TILE
         : targetZone * MAP * TILE + (MAP - WALL_THICKNESS - 3) * TILE;
       let spawnY = GATE_Y * TILE;
-      if (collidesCircle(spawnX, spawnY, PLAYER_RADIUS)) {
-        spawnY = (MAP / 2) * TILE;
+      if (targetGate) {
+        spawnY = targetGate.y;
+        spawnX = direction === 'forward' ? targetGate.x + TILE * 2 : targetGate.x - TILE * 2;
+      }
+      const nudges = [
+        { x: 0, y: 0 },
+        { x: 0, y: -TILE },
+        { x: 0, y: TILE },
+        { x: TILE, y: 0 },
+        { x: -TILE, y: 0 },
+        { x: 0, y: -2 * TILE },
+        { x: 0, y: 2 * TILE }
+      ];
+      for (const nudge of nudges) {
+        const nx = spawnX + nudge.x;
+        const ny = spawnY + nudge.y;
+        if (!collidesCircle(nx, ny, PLAYER_RADIUS)) {
+          spawnX = nx;
+          spawnY = ny;
+          break;
+        }
       }
       state.player.x = spawnX;
       state.player.y = spawnY;
@@ -2156,6 +2362,7 @@ button:active { transform: translateY(1px); }
         state.boss = {
           x: flow.altar.x + 50,
           y: flow.altar.y - 40,
+          name: 'Seigneur des Cendres',
           hp: 260 + zone * 40,
           hpMax: 260 + zone * 40,
           phase: 1
@@ -2188,7 +2395,7 @@ button:active { transform: translateY(1px); }
         return;
       }
       if (nearNpc.role === 'Forge') {
-        state.player.atk += 1; state.player.def += 1;
+        applyBaseStatDelta({ atk: 1, def: 1 });
         showToast('Amélioration appliquée');
         return;
       }
@@ -2201,8 +2408,7 @@ button:active { transform: translateY(1px); }
         }
         state.gold -= costGold;
         state.materials -= costMat;
-        state.player.hpMax += 6;
-        state.player.atk += 1;
+        applyBaseStatDelta({ hpMax: 6, atk: 1 });
         state.companions.forEach(c => { c.hpMax += 6; c.hp += 6; });
         showToast('Entraînement accompli');
         return;
@@ -2391,10 +2597,6 @@ button:active { transform: translateY(1px); }
       ctx.fillRect(prt.x - camX - 1, prt.y - camY - 1, 2, 2);
     });
     if (state.boss && !state.inHub) {
-      ctx.fillStyle = '#1a0f0f';
-      ctx.fillRect(10, 10, 220, 10);
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(10, 10, 220 * (state.boss.hp / state.boss.hpMax), 10);
       if (state.boss.telegraph) {
         ctx.strokeStyle = 'rgba(239,68,68,0.6)';
         ctx.beginPath();
@@ -2459,6 +2661,14 @@ button:active { transform: translateY(1px); }
       state.player.manaMax = base.mana;
       state.player.mana = Math.min(state.player.mana || base.mana, state.player.manaMax);
     }
+    if (state.player) {
+      state.player.inv = (state.player.inv || []).map(item => normalizeItem(item));
+      Object.keys(state.player.equip || {}).forEach((slot) => {
+        if (state.player.equip[slot]) state.player.equip[slot] = normalizeItem(state.player.equip[slot]);
+      });
+      ensureBaseStats();
+      applyEquipmentStats();
+    }
     if (!state.minimapZoom) state.minimapZoom = 20;
     if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
     if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
@@ -2502,6 +2712,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('dialogue').style.display = 'none';
     document.getElementById('shop').style.display = 'none';
     document.getElementById('hub-panel').style.display = 'none';
+    hideItemTooltip();
   };
 
   const openPanel = (id, pause = true) => {
@@ -2531,10 +2742,18 @@ button:active { transform: translateY(1px); }
     const right = document.createElement('div');
     const slotLabel = (slot, label) => {
       const equipped = state.player.equip[slot];
-      return `<div class="inv-slot">${label}<div class="small">${equipped ? `Équipé: ${equipped.name}` : 'Vide'}</div></div>`;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'inv-slot';
+      wrapper.dataset.equipSlot = slot;
+      wrapper.innerHTML = `<div>${label}</div><div class="small">${equipped ? `Équipé: ${equipped.name}` : 'Vide'}</div>`;
+      return wrapper;
     };
-    left.innerHTML = `${slotLabel('weapon', 'Arme')}${slotLabel('armor', 'Armure')}${slotLabel('amulet', 'Accessoire')}`;
-    right.innerHTML = `${slotLabel('boots', 'Bottes')}${slotLabel('helm', 'Casque')}${slotLabel('ring', 'Anneau')}`;
+    left.appendChild(slotLabel('weapon', 'Arme'));
+    left.appendChild(slotLabel('armor', 'Armure'));
+    left.appendChild(slotLabel('amulet', 'Accessoire'));
+    right.appendChild(slotLabel('boots', 'Bottes'));
+    right.appendChild(slotLabel('helm', 'Casque'));
+    right.appendChild(slotLabel('ring', 'Anneau'));
     center.className = 'inv-center';
     center.innerHTML = `<div class="small">Marqué</div><div class="item">ATK ${state.player.atk} · DEF ${state.player.def} · PV ${state.player.hpMax}</div>`;
     layout.appendChild(left);
@@ -2550,6 +2769,7 @@ button:active { transform: translateY(1px); }
       cell.className = `inv-cell ${it.rarity || ''} ${isEquipped ? 'equipped' : ''}`;
       cell.innerHTML = `<div>${it.name}</div>${isEquipped ? '<div class="equipped-badge">Équipé</div>' : ''}`;
       cell.dataset.equip = idx;
+      cell.dataset.itemIndex = idx;
       grid.appendChild(cell);
     });
     equip.appendChild(grid);
@@ -2578,6 +2798,57 @@ button:active { transform: translateY(1px); }
       div.innerHTML = `<strong>${q.title}</strong> <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>`;
       questsPanel.appendChild(div);
     });
+  };
+
+  const formatStatValue = (stat, value) => {
+    if (stat === 'crit' || stat === 'lifesteal') return `${(value * 100).toFixed(1)}%`;
+    if (stat === 'speed') return `${Math.round(value)}`;
+    return `${Math.round(value)}`;
+  };
+
+  const buildBonusLines = (bonuses) => Object.entries(bonuses)
+    .filter(([, value]) => value !== 0)
+    .map(([stat, value]) => `+${formatStatValue(stat, value)} ${STAT_LABELS[stat]}`);
+
+  const buildDeltaLines = (bonuses, compare) => {
+    const deltas = [];
+    Object.keys(bonuses).forEach((stat) => {
+      const diff = (bonuses[stat] || 0) - (compare?.[stat] || 0);
+      if (diff !== 0) {
+        const sign = diff > 0 ? '+' : '-';
+        deltas.push({ stat, diff, text: `${sign}${formatStatValue(stat, Math.abs(diff))} ${STAT_LABELS[stat]}` });
+      }
+    });
+    return deltas;
+  };
+
+  const showItemTooltip = (item, compareItem, x, y) => {
+    const tooltip = document.getElementById('item-tooltip');
+    const bonuses = getItemBonuses(item);
+    const compare = compareItem ? getItemBonuses(compareItem) : null;
+    const bonusLines = buildBonusLines(bonuses);
+    const deltaLines = compare ? buildDeltaLines(bonuses, compare) : [];
+    const rarityLabel = item.rarity ? item.rarity[0].toUpperCase() + item.rarity.slice(1) : 'Commun';
+    tooltip.innerHTML = `
+      <div class="title">${item.name}</div>
+      <div class="line dim">Slot: ${item.slot || '—'} · ${rarityLabel}</div>
+      ${item.affix ? `<div class="line dim">Affixe: ${item.affix}</div>` : ''}
+      ${bonusLines.map(line => `<div class="line">${line}</div>`).join('')}
+      ${deltaLines.length ? `<div class="delta ${deltaLines.some(d => d.diff < 0) ? 'negative' : 'positive'}">Δ ${deltaLines.map(d => d.text).join(' · ')}</div>` : ''}
+    `;
+    tooltip.style.display = 'block';
+    const rect = tooltip.getBoundingClientRect();
+    let left = x + 16;
+    let top = y + 16;
+    if (left + rect.width > window.innerWidth) left = x - rect.width - 16;
+    if (top + rect.height > window.innerHeight) top = y - rect.height - 16;
+    tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.top = `${Math.max(8, top)}px`;
+  };
+
+  const hideItemTooltip = () => {
+    const tooltip = document.getElementById('item-tooltip');
+    tooltip.style.display = 'none';
   };
 
   const renderCharacter = () => {
@@ -2770,6 +3041,7 @@ button:active { transform: translateY(1px); }
 
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
+    applyEquipmentStats();
     state.running = true;
     state.paused = false;
     state.dead = false;
@@ -2883,7 +3155,9 @@ button:active { transform: translateY(1px); }
           showToast(`Équipé: ${item.name}`);
         }
       }
+      applyEquipmentStats();
       renderInventory();
+      updateBars();
     }
   });
   document.getElementById('consumablesTab').addEventListener('click', (e) => {
@@ -2903,6 +3177,34 @@ button:active { transform: translateY(1px); }
       }
     }
   });
+
+  const inventoryPanel = document.getElementById('inventory');
+  inventoryPanel.addEventListener('mousemove', (e) => {
+    if (inventoryPanel.style.display !== 'flex') return;
+    const target = e.target.closest('[data-item-index], [data-equip-slot]');
+    if (!target) {
+      hideItemTooltip();
+      return;
+    }
+    let item = null;
+    let compareItem = null;
+    if (target.dataset.itemIndex) {
+      const idx = Number(target.dataset.itemIndex);
+      item = state.player.inv[idx];
+      if (item && item.slot) {
+        const equipped = state.player.equip[item.slot];
+        if (equipped && equipped.id !== item.id) compareItem = equipped;
+      }
+    } else if (target.dataset.equipSlot) {
+      item = state.player.equip[target.dataset.equipSlot];
+    }
+    if (!item) {
+      hideItemTooltip();
+      return;
+    }
+    showItemTooltip(item, compareItem, e.clientX, e.clientY);
+  });
+  inventoryPanel.addEventListener('mouseleave', hideItemTooltip);
 
   document.getElementById('pointsPanel').addEventListener('click', (e) => {
     if (!e.target.matches('button[data-stat]')) return;
@@ -2981,7 +3283,14 @@ button:active { transform: translateY(1px); }
     state.mouse.x = (e.clientX - rect.left) / rect.width * W;
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
   });
-  canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!state.running || state.dead) return;
+    if (e.button === 0 && state.selectedSpell) {
+      castSelectedSpell();
+    } else if (e.button === 0) {
+      doAttack();
+    }
+  });
   canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (state.selectedSpell) {
