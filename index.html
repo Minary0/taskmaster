@@ -1071,6 +1071,44 @@ button:active { transform: translateY(1px); }
     return false;
   };
 
+  const isIceAt = (x, y) => {
+    if (state.inHub) {
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      return hubTileAt(tx, ty) === 6;
+    }
+    if (state.inSubzone) {
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      return subTileAt(tx, ty) === 6;
+    }
+    const zoneIndex = clamp(Math.floor(x / (MAP * TILE)), 0, zones.length - 1);
+    const tx = Math.floor((x % (MAP * TILE)) / TILE);
+    const ty = Math.floor(y / TILE);
+    return tileAt(tx, ty, zoneIndex) === 6;
+  };
+
+  const collidesIce = (x, y, r) => {
+    const minX = Math.floor((x - r) / TILE);
+    const maxX = Math.floor((x + r) / TILE);
+    const minY = Math.floor((y - r) / TILE);
+    const maxY = Math.floor((y + r) / TILE);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        const tileX = tx * TILE;
+        const tileY = ty * TILE;
+        const checkX = clamp(x, tileX, tileX + TILE);
+        const checkY = clamp(y, tileY, tileY + TILE);
+        const dx = x - checkX;
+        const dy = y - checkY;
+        if (dx * dx + dy * dy <= r * r && isIceAt(checkX, checkY)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   const getCamera = () => {
     if (state.inHub) {
       const camX = clamp(state.player.x - W / 2, 0, HUB_MAP * TILE - W);
@@ -1922,6 +1960,10 @@ button:active { transform: translateY(1px); }
         mctx.fillRect(x * scale - size / 2, y * scale - size / 2, size, size);
       };
       state.subzoneInteractables.forEach(it => drawDot(it.x / TILE, it.y / TILE, '#facc15', 3));
+      const trackedTarget = getTrackedTarget();
+      if (trackedTarget && trackedTarget.zone === zoneIndex) {
+        drawDot(trackedTarget.x / TILE, trackedTarget.y / TILE, '#fbbf24', 3);
+      }
       drawDot(state.player.x / TILE, state.player.y / TILE, '#22c55e', 3);
       return;
     }
@@ -2073,6 +2115,8 @@ button:active { transform: translateY(1px); }
         });
       }
     }
+    const prevX = p.x;
+    const prevY = p.y;
     p.x += p.vx; p.y += p.vy;
     if (state.inHub) {
       p.x = clamp(p.x, TILE * 2, TILE * (HUB_MAP - 2));
@@ -2089,6 +2133,13 @@ button:active { transform: translateY(1px); }
       if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.x += p.vx;
       p.y -= p.vy;
       if (collidesCircle(p.x, p.y, PLAYER_RADIUS)) p.y += p.vy;
+    }
+    if (collidesIce(p.x, p.y, PLAYER_RADIUS)) {
+      p.x = prevX;
+      p.y = prevY;
+      const back = Math.hypot(p.vx, p.vy) || 1;
+      p.x -= (p.vx / back) * 8;
+      p.y -= (p.vy / back) * 8;
     }
     p.stam = clamp(p.stam + dt * 10, 0, p.stamMax);
     p.attackCooldown = Math.max(0, (p.attackCooldown || 0) - dt);
@@ -3512,7 +3563,7 @@ button:active { transform: translateY(1px); }
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.selectedSpell) state.selectedSpell = null;
     if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
-      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare'];
+      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare', 'light'];
     }
     if (!state.spellCooldowns) state.spellCooldowns = {};
     if (!state.player.manaMax || state.player.manaMax <= 0) {
@@ -3943,7 +3994,7 @@ button:active { transform: translateY(1px); }
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     applyEquipmentStats();
-    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare'];
+    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare', 'light'];
     state.running = true;
     state.paused = false;
     state.dead = false;
