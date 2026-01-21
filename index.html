@@ -89,6 +89,8 @@ button:active { transform: translateY(1px); }
 .inv-cell.rare { border-color: var(--rare); }
 .inv-cell.epic { border-color: var(--epic); }
 .inv-cell.legendary { border-color: var(--legend); }
+.inv-cell.equipped { border-color: var(--accent); box-shadow: 0 0 6px rgba(212,175,55,0.6); }
+.inv-cell .equipped-badge { font-size: 9px; color: var(--accent); margin-top: 2px; }
 .item { background: rgba(18,18,24,0.95); border: 1px solid var(--ui-border); border-radius: 4px; padding: 8px; }
 .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
 .tag.common { background: #1f2937; }
@@ -120,6 +122,7 @@ button:active { transform: translateY(1px); }
       <div class="bar sta"><span id="staBar"></span></div>
       <div>Mana</div>
       <div class="bar mana"><span id="manaBar"></span></div>
+      <div class="small">Sort: <span id="spellText">Aucun</span></div>
       <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
     </div>
     <div class="panel">
@@ -214,6 +217,14 @@ button:active { transform: translateY(1px); }
       <div class="small">Or: <span id="shopGold">0</span></div>
       <div id="shopList" class="list"></div>
       <button id="shopClose">Fermer</button>
+    </div>
+  </div>
+
+  <div id="hub-panel" class="overlay">
+    <div class="panel">
+      <h2>Sanctuaire</h2>
+      <div id="hubList" class="list"></div>
+      <button id="hubClose">Fermer</button>
     </div>
   </div>
 
@@ -338,6 +349,7 @@ button:active { transform: translateY(1px); }
   const MAP = 64;
   const HUB_MAP = 32;
   const WALL_THICKNESS = 3;
+  const GATE_Y = 24;
   const DROP_PICKUP_RANGE = 120;
   const NPC_RANGE = 130;
   const ORB_RANGE = 120;
@@ -574,6 +586,7 @@ button:active { transform: translateY(1px); }
     lastCheckpoint: null,
     lastHubCheckpoint: null,
     spellWheel: { open: false, options: [] },
+    selectedSpell: null,
     minimapZoom: 20,
     debug: false,
     activeZone: 0,
@@ -641,9 +654,8 @@ button:active { transform: translateY(1px); }
 
   const tileAt = (tx, ty, zone) => {
     if (tx < 0 || ty < 0 || tx >= MAP || ty >= MAP) return 1;
-    const gateY = 24;
     const doorSpan = 5;
-    const inDoorY = Math.abs(ty - gateY) <= doorSpan;
+    const inDoorY = Math.abs(ty - GATE_Y) <= doorSpan;
 
     const flow = state.zoneFlow[`zone-${zone}`];
 
@@ -655,7 +667,7 @@ button:active { transform: translateY(1px); }
 
     const doorLocked = (gateRef) => {
       if (!inDoorY || !inDoorX) return null;
-      if (flow && gateRef) return gateRef.locked ? 6 : 0; // 6 = mur, 0 = sol
+      // Mur indestructible: la porte ne supprime jamais le mur.
       return 6;
     };
     const forwardDoor = doorLocked(flow ? flow.gate : null);
@@ -1265,6 +1277,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('staBar').style.width = `${(state.player.stam / state.player.stamMax) * 100}%`;
     document.getElementById('manaBar').style.width = `${(state.player.mana / state.player.manaMax) * 100}%`;
     if (state.spellWheel.open) updateSpellWheelCenter();
+    document.getElementById('spellText').textContent = state.selectedSpell ? state.selectedSpell.name : 'Aucun';
     document.getElementById('lvlText').textContent = state.player.level;
     document.getElementById('goldText').textContent = state.gold;
     const zoneIndex = currentZone();
@@ -1607,7 +1620,7 @@ button:active { transform: translateY(1px); }
           state.clearedZones = zone + 1;
           state.bestProgress = Math.max(state.bestProgress, state.clearedZones);
         }
-        if (!flow.riftSpawned) {
+        if (!flow.riftSpawned && zone % 5 === 2) {
           const rift = {
             id: `rift-${zone}`,
             type: 'rift_sanctuary',
@@ -1775,6 +1788,25 @@ button:active { transform: translateY(1px); }
     state.paused = false;
   };
 
+  const selectSpell = (spell) => {
+    if (!spell) return;
+    state.selectedSpell = spell;
+    console.debug('[spell] selected', spell.id);
+    showToast(`Sort sélectionné: ${spell.name}`);
+  };
+
+  const castSelectedSpell = () => {
+    if (!state.selectedSpell) {
+      showToast('Aucun sort sélectionné');
+      return;
+    }
+    const spell = state.selectedSpell;
+    const didCast = castSpell(spell);
+    if (didCast) {
+      state.selectedSpell = null;
+    }
+  };
+
   const updateSpellWheelCenter = () => {
     const charges = Math.floor(state.player.mana / (state.player.manaMax / 3));
     const center = document.querySelector('#spell-wheel .center');
@@ -1788,11 +1820,13 @@ button:active { transform: translateY(1px); }
     if (p.mana < cost) {
       showToast('Mana insuffisant');
       audio.tone(120, 0.1, 'sine', 0.05);
-      return;
+      console.debug('[spell] blocked', { mana: p.mana, cost });
+      return false;
     }
     p.mana -= cost;
     updateSpellWheelCenter();
     showToast(`Sort: ${spell.name}`);
+    console.debug('[spell] cast', spell.id);
     const { camX, camY } = getCamera();
     const angle = Math.atan2(state.mouse.y + camY - state.player.y, state.mouse.x + camX - state.player.x);
     if (spell.effect === 'bolt') {
@@ -1824,6 +1858,7 @@ button:active { transform: translateY(1px); }
     } else if (spell.effect === 'summon') {
       state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
     }
+    return true;
   };
 
   const updateProjectiles = (dt) => {
@@ -1921,6 +1956,80 @@ button:active { transform: translateY(1px); }
     }
   };
 
+  const hubNpcEffects = {
+    'Marchand HP': 'Achète des potions de vie (15 or).',
+    'Marchand Mana': 'Achète des potions de mana (18 or).',
+    'Marchand Équipement': 'Objets rares/épiques contre or.',
+    'Forge': 'Améliore ATK +1 / DEF +1.',
+    'Revente': 'Vend un objet contre 10 or.',
+    'Entraîneur': 'Améliore HP +6 / ATK +1 (coût: 30 or + 2 matériaux).'
+  };
+
+  const handleHubNpcAction = (npc) => {
+    if (npc.role.toLowerCase().includes('marchand')) {
+      state.shopType = npc.role.toLowerCase().includes('mana') ? 'mana' : npc.role.toLowerCase().includes('hp') ? 'hp' : npc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
+      renderShop();
+      openPanel('shop');
+      return 'shop';
+    }
+    if (npc.role === 'Forge') {
+      state.player.atk += 1;
+      state.player.def += 1;
+      showToast('Forge: +1 ATK / +1 DEF');
+      return 'action';
+    }
+    if (npc.role === 'Entraîneur') {
+      const costGold = 30;
+      const costMat = 2;
+      if (state.gold < costGold || state.materials < costMat) {
+        showToast('Ressources insuffisantes');
+        return;
+      }
+      state.gold -= costGold;
+      state.materials -= costMat;
+      state.player.hpMax += 6;
+      state.player.atk += 1;
+      state.companions.forEach(c => { c.hpMax += 6; c.hp += 6; });
+      showToast('Entraînement accompli');
+      return 'action';
+    }
+    if (npc.role === 'Revente') {
+      const item = state.player.inv.find(it => it.type !== 'potion' && it.type !== 'mana_potion');
+      if (!item) {
+        showToast('Aucun objet à vendre');
+        return 'action';
+      }
+      state.player.inv = state.player.inv.filter(it => it !== item);
+      state.gold += 10;
+      showToast('Revente effectuée');
+      return 'action';
+    }
+    return 'action';
+  };
+
+  const renderHubPanel = () => {
+    const hubList = document.getElementById('hubList');
+    hubList.innerHTML = '';
+    state.hubNpcs.forEach((npc) => {
+      const row = document.createElement('div');
+      row.className = 'item';
+      const effect = hubNpcEffects[npc.role] || 'Service du sanctuaire.';
+      row.innerHTML = `<strong>${npc.name}</strong><div class="small">${npc.role}</div><div class="small">${effect}</div>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Choisir';
+      btn.addEventListener('click', () => {
+        const result = handleHubNpcAction(npc);
+        renderInventory();
+        updateBars();
+        if (result !== 'shop' && document.getElementById('hub-panel').style.display === 'flex') {
+          closeOverlay();
+        }
+      });
+      row.appendChild(btn);
+      hubList.appendChild(row);
+    });
+  };
+
   const checkLevelUp = () => {
     if (state.player.xp >= state.player.xpNext) {
       state.player.xp -= state.player.xpNext;
@@ -1972,17 +2081,25 @@ button:active { transform: translateY(1px); }
     }
     const gate = nearest(getActiveInteractables().filter(i => i.type === 'gate'), GATE_RANGE);
     const teleportThroughGate = (direction) => {
-      if (direction === 'forward') {
-        state.player.x = (zone + 1) * MAP * TILE + (WALL_THICKNESS + 2) * TILE;
-        state.player.y = gateY * TILE;
-        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone + 1 };
-        syncBackGate(zone + 1);
-      } else if (direction === 'back') {
-        state.player.x = (zone - 1) * MAP * TILE + (MAP - WALL_THICKNESS - 3) * TILE;
-        state.player.y = gateY * TILE;
-        state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: zone - 1 };
-        syncBackGate(zone);
+      const targetZone = direction === 'forward'
+        ? clamp(zone + 1, 0, zones.length - 1)
+        : clamp(zone - 1, 0, zones.length - 1);
+      if (targetZone === zone) {
+        showToast('Destination invalide');
+        return;
       }
+      initZoneFlow(targetZone);
+      const spawnX = direction === 'forward'
+        ? targetZone * MAP * TILE + (WALL_THICKNESS + 2) * TILE
+        : targetZone * MAP * TILE + (MAP - WALL_THICKNESS - 3) * TILE;
+      let spawnY = GATE_Y * TILE;
+      if (collidesCircle(spawnX, spawnY, PLAYER_RADIUS)) {
+        spawnY = (MAP / 2) * TILE;
+      }
+      state.player.x = spawnX;
+      state.player.y = spawnY;
+      state.lastCheckpoint = { x: state.player.x, y: state.player.y, zone: targetZone };
+      syncBackGate(targetZone);
     };
     if (gate) {
       if (gate.direction === 'forward' && flow.keyDropped && flow.gate.locked) {
@@ -2043,6 +2160,11 @@ button:active { transform: translateY(1px); }
     }
     const nearNpc = nearest(getActiveNpcs(), NPC_RANGE);
     if (nearNpc) {
+      if (state.inHub) {
+        renderHubPanel();
+        openPanel('hub-panel');
+        return;
+      }
       if (nearNpc.role.toLowerCase().includes('marchand')) {
         state.shopType = nearNpc.role.toLowerCase().includes('mana') ? 'mana' : nearNpc.role.toLowerCase().includes('hp') ? 'hp' : nearNpc.role.toLowerCase().includes('équipement') ? 'equipment' : 'general';
         renderShop();
@@ -2314,6 +2436,7 @@ button:active { transform: translateY(1px); }
     if (!state.explored) state.explored = {};
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
+    if (!state.selectedSpell) state.selectedSpell = null;
     if (!state.minimapZoom) state.minimapZoom = 20;
     if (!state.lastHubCheckpoint) state.lastHubCheckpoint = null;
     if (!state.lastHubReturnPoint) state.lastHubReturnPoint = null;
@@ -2356,6 +2479,7 @@ button:active { transform: translateY(1px); }
     document.getElementById('gameOver').style.display = 'none';
     document.getElementById('dialogue').style.display = 'none';
     document.getElementById('shop').style.display = 'none';
+    document.getElementById('hub-panel').style.display = 'none';
   };
 
   const openPanel = (id, pause = true) => {
@@ -2383,8 +2507,12 @@ button:active { transform: translateY(1px); }
     const left = document.createElement('div');
     const center = document.createElement('div');
     const right = document.createElement('div');
-    left.innerHTML = '<div class="inv-slot">Arme</div><div class="inv-slot">Armure</div><div class="inv-slot">Accessoire</div>';
-    right.innerHTML = '<div class="inv-slot">Bottes</div><div class="inv-slot">Casque</div><div class="inv-slot">Anneau</div>';
+    const slotLabel = (slot, label) => {
+      const equipped = state.player.equip[slot];
+      return `<div class="inv-slot">${label}<div class="small">${equipped ? `Équipé: ${equipped.name}` : 'Vide'}</div></div>`;
+    };
+    left.innerHTML = `${slotLabel('weapon', 'Arme')}${slotLabel('armor', 'Armure')}${slotLabel('amulet', 'Accessoire')}`;
+    right.innerHTML = `${slotLabel('boots', 'Bottes')}${slotLabel('helm', 'Casque')}${slotLabel('ring', 'Anneau')}`;
     center.className = 'inv-center';
     center.innerHTML = `<div class="small">Marqué</div><div class="item">ATK ${state.player.atk} · DEF ${state.player.def} · PV ${state.player.hpMax}</div>`;
     layout.appendChild(left);
@@ -2396,8 +2524,9 @@ button:active { transform: translateY(1px); }
     state.player.inv.forEach((it, idx) => {
       if (it.type === 'potion' || it.type === 'mana_potion') return;
       const cell = document.createElement('div');
-      cell.className = `inv-cell ${it.rarity || ''}`;
-      cell.textContent = it.name;
+      const isEquipped = it.slot && state.player.equip[it.slot] && state.player.equip[it.slot].id === it.id;
+      cell.className = `inv-cell ${it.rarity || ''} ${isEquipped ? 'equipped' : ''}`;
+      cell.innerHTML = `<div>${it.name}</div>${isEquipped ? '<div class="equipped-badge">Équipé</div>' : ''}`;
       cell.dataset.equip = idx;
       grid.appendChild(cell);
     });
@@ -2676,6 +2805,7 @@ button:active { transform: translateY(1px); }
   document.getElementById('guideClose').addEventListener('click', () => openPanel('menu', false));
   document.getElementById('dialogueClose').addEventListener('click', closeOverlay);
   document.getElementById('shopClose').addEventListener('click', closeOverlay);
+  document.getElementById('hubClose').addEventListener('click', closeOverlay);
   document.getElementById('resumeBtn').addEventListener('click', () => { state.paused = false; hideAll(); });
   document.getElementById('saveBtn').addEventListener('click', saveGame);
   document.getElementById('pauseOptBtn').addEventListener('click', () => openPanel('options'));
@@ -2716,8 +2846,17 @@ button:active { transform: translateY(1px); }
     const cell = e.target.closest('[data-equip]');
     if (cell) {
       const idx = Number(cell.dataset.equip);
-      const item = state.player.inv.splice(idx, 1)[0];
-      if (item) state.player.equip[item.slot] = item;
+      const item = state.player.inv[idx];
+      if (item && item.slot) {
+        const equipped = state.player.equip[item.slot];
+        if (equipped && equipped.id === item.id) {
+          state.player.equip[item.slot] = null;
+          showToast('Déséquipé');
+        } else {
+          state.player.equip[item.slot] = item;
+          showToast(`Équipé: ${item.name}`);
+        }
+      }
       renderInventory();
     }
   });
@@ -2752,6 +2891,11 @@ button:active { transform: translateY(1px); }
     const key = e.key.toLowerCase();
     if (key === 'escape' && state.spellWheel.open) {
       closeSpellWheel();
+      return;
+    }
+    if (key === 'escape' && state.selectedSpell) {
+      state.selectedSpell = null;
+      showToast('Sort annulé');
       return;
     }
     if (key === 'w' || key === 'z' || key === 'arrowup') keys.up = true;
@@ -2809,7 +2953,14 @@ button:active { transform: translateY(1px); }
     state.mouse.y = (e.clientY - rect.top) / rect.height * H;
   });
   canvas.addEventListener('pointerdown', () => { if (state.running && !state.dead) doAttack(); });
-  canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); openSpellWheel(); });
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (state.selectedSpell) {
+      castSelectedSpell();
+    } else {
+      openSpellWheel();
+    }
+  });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) state.paused = true; });
   window.addEventListener('blur', () => state.paused = true);
@@ -2856,7 +3007,7 @@ button:active { transform: translateY(1px); }
     if (slot) {
       const idx = Number(slot.dataset.slot);
       const spell = state.spellWheel.options[idx];
-      if (spell) castSpell(spell);
+      if (spell) selectSpell(spell);
     }
     closeSpellWheel();
   });
