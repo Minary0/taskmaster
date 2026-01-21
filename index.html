@@ -510,6 +510,24 @@ button:active { transform: translateY(1px); }
     { id: 'u12', name: 'Armure d\'Astral-Morne', slot: 'armor', desc: 'Forgée pour un roi qui n\'a jamais régné.' }
   ];
 
+  const npcs = [
+    { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
+    { name: 'Mara des Lisières', role: 'Herboriste', zone: 0, dialog: 'La brume ronge mes récoltes. Prends ce remède.' },
+    { name: 'Serek le Tisseur', role: 'Forgeron', zone: 0, dialog: 'Les métaux chantent encore si on sait écouter.' },
+    { name: 'Nys la Muette', role: 'Oracle', zone: 0, dialog: 'Les marais te veulent vivant, pour l\'instant.' },
+    { name: 'Elyne, l\'Éclat Brisé', role: 'Compagnon', zone: 1, dialog: 'Si je te suis, promets-moi de ne pas mentir.' },
+    { name: 'Kael, le Porte-Cendre', role: 'Compagnon', zone: 2, dialog: 'Je marche pour éteindre ce feu, ou m\'y perdre.' },
+    { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
+    { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
+    { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
+    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' },
+    { name: 'Azar', role: 'Marchand', zone: 0, dialog: 'Mon or vaut plus que ta mémoire, Marqué.' },
+    { name: 'Sage Mir', role: 'Oracle', zone: 4, dialog: 'Le Roi attendait un Marqué.' },
+    { name: 'Tess des Marais', role: 'Survivante', zone: 0, dialog: 'Les noyaux poussent comme des dents.' },
+    { name: 'Ardent Sion', role: 'Chasseur', zone: 1, dialog: 'Le cerf rôde. Ne le regarde pas.' },
+    { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
+  ];
+
   const generateQuests = () => {
     const mainByAct = [
       [
@@ -695,24 +713,6 @@ button:active { transform: translateY(1px); }
       }
     });
   };
-
-  const npcs = [
-    { name: 'Frère Olin', role: 'Gardien', zone: 0, dialog: 'Le serment t\'a réveillé, Marqué. Tu dois marcher.' },
-    { name: 'Mara des Lisières', role: 'Herboriste', zone: 0, dialog: 'La brume ronge mes récoltes. Prends ce remède.' },
-    { name: 'Serek le Tisseur', role: 'Forgeron', zone: 0, dialog: 'Les métaux chantent encore si on sait écouter.' },
-    { name: 'Nys la Muette', role: 'Oracle', zone: 0, dialog: 'Les marais te veulent vivant, pour l\'instant.' },
-    { name: 'Elyne, l\'Éclat Brisé', role: 'Compagnon', zone: 1, dialog: 'Si je te suis, promets-moi de ne pas mentir.' },
-    { name: 'Kael, le Porte-Cendre', role: 'Compagnon', zone: 2, dialog: 'Je marche pour éteindre ce feu, ou m\'y perdre.' },
-    { name: 'Dame Ysra', role: 'Marchande', zone: 1, dialog: 'J\'échange des souvenirs contre des pièces.' },
-    { name: 'Archiviste Nox', role: 'Sage', zone: 2, dialog: 'Caldris n\'a jamais voulu être un tombeau.' },
-    { name: 'Rhea des Hymnes', role: 'Chanteuse', zone: 3, dialog: 'Chanter est la seule arme qui reste ici.' },
-    { name: 'Maître Varro', role: 'Prêtre', zone: 4, dialog: 'La citadelle attend ton serment.' },
-    { name: 'Azar', role: 'Marchand', zone: 0, dialog: 'Mon or vaut plus que ta mémoire, Marqué.' },
-    { name: 'Sage Mir', role: 'Oracle', zone: 4, dialog: 'Le Roi attendait un Marqué.' },
-    { name: 'Tess des Marais', role: 'Survivante', zone: 0, dialog: 'Les noyaux poussent comme des dents.' },
-    { name: 'Ardent Sion', role: 'Chasseur', zone: 1, dialog: 'Le cerf rôde. Ne le regarde pas.' },
-    { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
-  ];
 
   const state = {
     running: false,
