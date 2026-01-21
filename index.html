@@ -1602,7 +1602,7 @@ button:active { transform: translateY(1px); }
 
   const enterSubzone = (gate) => {
     state.inSubzone = true;
-    state.caveLightActive = true;
+    state.caveLightActive = false;
     state.subzoneReturn = { x: state.player.x, y: state.player.y, zone: currentZone() };
     buildSubzoneMap();
     const center = Math.floor(SUB_MAP / 2) * TILE;
@@ -1625,6 +1625,7 @@ button:active { transform: translateY(1px); }
     if (!state.subzoneReturn) return;
     state.inSubzone = false;
     state.caveLightActive = false;
+    state.lightUntil = 0;
     state.player.x = state.subzoneReturn.x;
     state.player.y = state.subzoneReturn.y;
     state.subzoneMap = null;
@@ -2514,7 +2515,7 @@ button:active { transform: translateY(1px); }
     { id: 'blink', name: 'Blink', effect: 'blink', element: 'arcane', cost: 16, cooldown: 3.2, iconKey: 'boots', desc: 'Téléportation courte.' },
     { id: 'gravity', name: 'Gravity Pull', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Ramène les ennemis.' },
     { id: 'summon', name: 'Summon Orb', effect: 'summon', element: 'arcane', cost: 30, cooldown: 5.0, iconKey: 'ring', desc: 'Orbe orbitale protectrice.' },
-    { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 22, cooldown: 4.0, iconKey: 'amulet', desc: 'Halo apaisant contre la brume.' }
+    { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 6, cooldown: 2.0, iconKey: 'amulet', desc: 'Halo apaisant contre la brume.' }
   ];
 
   const pickSpellOptions = () => {
@@ -2708,7 +2709,12 @@ button:active { transform: translateY(1px); }
         state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6 + magicPower * 0.2, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
       }
     } else if (spell.effect === 'light') {
+      if (!state.inSubzone) {
+        showToast('La lumière n agit qu en grotte.');
+        return false;
+      }
       const now = nowSec();
+      state.caveLightActive = true;
       state.lightUntil = Math.max(state.lightUntil, now + 4);
       const zone = currentZone();
       for (let i = 0; i < 12; i++) {
@@ -3266,9 +3272,8 @@ button:active { transform: translateY(1px); }
   };
 
   const computeDarkAlpha = (zoneIndex) => {
-    let alpha = DARK_ALPHA;
-    if (!state.caveLightActive) return 0;
-    if (state.inSubzone) alpha += 0.08;
+    if (!state.inSubzone) return 0;
+    let alpha = DARK_ALPHA + 0.08;
     const actIndex = Math.floor(zoneIndex / 5);
     if (actIndex >= 3) alpha += 0.04;
     if (actIndex >= 4) alpha += 0.04;
@@ -3277,7 +3282,7 @@ button:active { transform: translateY(1px); }
   };
 
   const renderLighting = (camX, camY, zoneIndex) => {
-    if (!settings.lightEnabled || !state.caveLightActive) return;
+    if (!settings.lightEnabled || !state.inSubzone) return;
     const now = nowSec();
     const boost = clamp((state.lightUntil - now) / 6, 0, 1);
     const flickerBase = settings.lowParticles ? 0 : Math.sin(state.time * 2.2) * 0.02 + Math.sin(state.time * 4.1) * 0.015;
@@ -3290,20 +3295,22 @@ button:active { transform: translateY(1px); }
     const gy = state.player.y - camY;
 
     lightCtx.clearRect(0, 0, W, H);
-    lightCtx.fillStyle = `rgba(4, 6, 12, ${alpha.toFixed(2)})`;
+    lightCtx.fillStyle = `rgba(18, 12, 6, ${alpha.toFixed(2)})`;
     lightCtx.fillRect(0, 0, W, H);
-    // Cutout only: no glow/halo to avoid visible ring on the edge.
-    lightCtx.globalCompositeOperation = 'destination-out';
-    const inner = radius * (1 - clamp(softness, 0.2, 0.85));
-    const grad = lightCtx.createRadialGradient(gx, gy, inner, gx, gy, radius);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(0.6, 'rgba(0,0,0,0.35)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    lightCtx.fillStyle = grad;
-    lightCtx.beginPath();
-    lightCtx.arc(gx, gy, radius, 0, Math.PI * 2);
-    lightCtx.fill();
-    lightCtx.globalCompositeOperation = 'source-over';
+    if (state.caveLightActive) {
+      // Cutout only: no glow/halo to avoid visible ring on the edge.
+      lightCtx.globalCompositeOperation = 'destination-out';
+      const inner = radius * (1 - clamp(softness, 0.2, 0.85));
+      const grad = lightCtx.createRadialGradient(gx, gy, inner, gx, gy, radius);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.6, 'rgba(0,0,0,0.35)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      lightCtx.fillStyle = grad;
+      lightCtx.beginPath();
+      lightCtx.arc(gx, gy, radius, 0, Math.PI * 2);
+      lightCtx.fill();
+      lightCtx.globalCompositeOperation = 'source-over';
+    }
     ctx.drawImage(lightCanvas, 0, 0);
   };
 
@@ -3583,7 +3590,7 @@ button:active { transform: translateY(1px); }
     if (!data) return false;
     Object.assign(state, JSON.parse(data));
     state.running = true; state.paused = false; state.dead = false;
-    state.caveLightActive = !!state.inSubzone;
+    state.caveLightActive = !!(state.inSubzone && state.caveLightActive);
     if (state.player && state.player.classKey && classes[state.player.classKey]) {
       const base = classes[state.player.classKey];
       state.player.ranged = true;
