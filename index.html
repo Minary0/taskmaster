@@ -2695,7 +2695,7 @@ button:active { transform: translateY(1px); }
       }
     } else if (spell.effect === 'light') {
       const now = nowSec();
-      state.lightUntil = Math.max(state.lightUntil, now + 6);
+      state.lightUntil = Math.max(state.lightUntil, now + 4);
       const zone = currentZone();
       for (let i = 0; i < 12; i++) {
         const angleL = (Math.PI * 2 * i) / 12;
@@ -3482,30 +3482,31 @@ button:active { transform: translateY(1px); }
 
     if (state.inSubzone) {
       const now = nowSec();
-      const lightFactor = clamp((state.lightUntil - now) / 2.5, 0, 1);
-      const radius = 80 + lightFactor * 220;
-      const baseAlpha = 0.92 - lightFactor * 0.35;
+      const lightFactor = clamp((state.lightUntil - now) / 4, 0, 1);
+      const radius = 40 + lightFactor * 200;
+      const baseAlpha = 0.94 - lightFactor * 0.35;
       ctx.save();
       ctx.fillStyle = `rgba(0,0,0,${baseAlpha.toFixed(2)})`;
       ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'destination-out';
       const gx = p.x - camX;
       const gy = p.y - camY;
-      const grad = ctx.createRadialGradient(gx, gy, radius * 0.2, gx, gy, radius);
-      grad.addColorStop(0, 'rgba(0,0,0,1)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(gx, gy, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
       if (lightFactor > 0) {
-        const glow = ctx.createRadialGradient(gx, gy, radius * 0.1, gx, gy, radius * 0.9);
-        glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
-        glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
-        ctx.fillStyle = glow;
+        ctx.globalCompositeOperation = 'destination-out';
+        const cut = ctx.createRadialGradient(gx, gy, radius * 0.1, gx, gy, radius);
+        cut.addColorStop(0, 'rgba(0,0,0,1)');
+        cut.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = cut;
         ctx.beginPath();
-        ctx.arc(gx, gy, radius * 0.9, 0, Math.PI * 2);
+        ctx.arc(gx, gy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        const halo = ctx.createRadialGradient(gx, gy, radius * 0.5, gx, gy, radius * 1.05);
+        halo.addColorStop(0, 'rgba(253, 224, 71, 0)');
+        halo.addColorStop(0.7, `rgba(253, 224, 71, ${0.15 + lightFactor * 0.25})`);
+        halo.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(gx, gy, radius * 1.05, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
