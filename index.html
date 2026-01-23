@@ -178,7 +178,7 @@ button:active { transform: translateY(1px); }
       <button id="guideBtn">Guide</button>
       <button id="optBtn">Options</button>
       <button id="creditsBtn">Crédits</button>
-      <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · C: perso · Q: quêtes · ESC: pause</div>
+      <div class="small" style="margin-top:10px;">ZQSD/Flèches: bouger · Souris: attaque · E: interagir · I: inventaire · Q: quêtes · ESC: pause</div>
     </div>
   </div>
 
@@ -567,6 +567,11 @@ button:active { transform: translateY(1px); }
 
   const spellName = (spellId) => spellDisplayNames[spellId] || spellId;
 
+  const getZoneNpcName = (zoneId) => {
+    const npc = npcs.find(entry => entry.zone === zoneId);
+    return npc ? npc.name : npcs[0]?.name || 'Frère Olin';
+  };
+
   const generateQuests = () => {
     const mainByAct = [
       [
@@ -602,10 +607,9 @@ button:active { transform: translateY(1px); }
       mainByAct[actIndex].forEach((entry, i) => {
         const id = `main-${actIndex}-${i}`;
         const zoneId = baseZone + i;
+        const npcName = getZoneNpcName(zoneId);
         const steps = [
-          { desc: `Atteindre ${acts[actIndex].biome} — Zone ${i + 1}`, trigger: 'enterZone', goal: 1, progress: 0, zone: zoneId },
-          { desc: 'Détruire 3 noyaux de brume', trigger: 'orb', goal: 3, progress: 0, zone: zoneId },
-          { desc: 'Activer l\'autel', trigger: 'altar', goal: 1, progress: 0, zone: zoneId }
+          { desc: `Parler à ${npcName}`, trigger: 'talk', goal: 1, progress: 0, npc: npcName, zone: zoneId }
         ];
         const rewards = { gold: 40 + actIndex * 10, materials: 2 + actIndex, item: true };
         if (i === 2) rewards.spell = spellUnlocks[actIndex];
@@ -3809,8 +3813,28 @@ button:active { transform: translateY(1px); }
     ctx.stroke();
   };
 
+  const serializeExplored = () => {
+    const out = {};
+    Object.entries(state.explored || {}).forEach(([zone, cells]) => {
+      out[zone] = Array.from(cells || []);
+    });
+    return out;
+  };
+
+  const restoreExplored = (data) => {
+    const restored = {};
+    Object.entries(data || {}).forEach(([zone, cells]) => {
+      restored[zone] = new Set(cells || []);
+    });
+    return restored;
+  };
+
   const saveGame = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const payload = {
+      ...state,
+      explored: serializeExplored()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     showToast('Sauvegarde effectuée');
   };
 
@@ -3838,6 +3862,7 @@ button:active { transform: translateY(1px); }
     }
     if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.explored) state.explored = {};
+    state.explored = restoreExplored(state.explored);
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
@@ -4478,7 +4503,6 @@ button:active { transform: translateY(1px); }
     if (key === 'e') keys.interact = true;
     if (key === 'shift') keys.dash = true;
     if (key === 'i') { openPanel('inventory'); renderInventory(); }
-    if (key === 'c') { openPanel('character'); renderCharacter(); }
     if (key === 'q') { openPanel('journal'); renderJournal(); }
     if (key === 'r') openSpellWheel();
     if (key === 'f' && !input.castDown) { input.castDown = true; castSelectedSpell('keyboard'); }
