@@ -5,7 +5,7 @@ Application de bureau multiplateforme pour découper une vidéo en segments de d
 ## Fonctionnalités
 
 - Sélection d'un fichier vidéo (`.mp4`, `.mkv`, `.mov`, `.webm`).
-- Durée de segment configurable en minutes/secondes.
+- Durée de segment configurable en minutes/secondes (avec variation aléatoire ±10 s).
 - Deux modes :
   - **Rapide (sans ré-encodage)** : découpe plus rapide, dépend des keyframes.
   - **Précis (ré-encodage)** : coupes exactes (H.264 + AAC par défaut).
@@ -52,7 +52,7 @@ python main.py
 
 1. Sélectionnez le fichier vidéo.
    - ou collez un lien YouTube dans le champ dédié.
-2. Choisissez la durée de segment.
+2. Choisissez la durée de segment (les extraits varient de ±10 s, sans descendre sous 1 min).
 3. Sélectionnez le mode (Rapide ou Précis) et le format de sortie.
 4. Choisissez le dossier de sortie.
 5. Cliquez sur **Analyser** pour obtenir la durée totale.

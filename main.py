@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import queue
+import random
 import re
 import shutil
 import subprocess
@@ -198,18 +199,32 @@ def split_video(
     ffmpeg_path, _ = ensure_ffmpeg_available()
     validate_paths(input_path, output_dir)
     total_duration = get_duration_seconds(input_path)
-    total_segments = estimate_segments(total_duration, segment_duration)
+    min_duration = 60
+    durations: List[float] = []
+    remaining = total_duration
+    while remaining > 0:
+        jitter = random.randint(-10, 10)
+        target = segment_duration + jitter
+        adjusted = max(min_duration, target)
+        if remaining <= min_duration:
+            durations.append(remaining)
+            break
+        if adjusted > remaining:
+            durations.append(remaining)
+            break
+        durations.append(adjusted)
+        remaining -= adjusted
+    total_segments = len(durations)
     logger(
         f"Durée totale: {total_duration:.2f}s | Segments: {total_segments} | Mode: {mode}"
     )
     results: List[Path] = []
-    for index in range(total_segments):
-        start = index * segment_duration
-        duration = min(segment_duration, total_duration - start)
+    start = 0.0
+    for index, duration in enumerate(durations, start=1):
         output_path = build_output_name(
             input_path,
             output_dir,
-            index + 1,
+            index,
             total_segments,
             output_ext,
         )
@@ -222,7 +237,8 @@ def split_video(
             logger(result.stderr.strip())
             raise FFMpegError("Erreur FFmpeg lors du découpage.")
         results.append(output_path)
-        progress(index + 1, total_segments)
+        progress(index, total_segments)
+        start += duration
     return results
 
 
