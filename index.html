@@ -153,6 +153,7 @@ button:active { transform: translateY(1px); }
       <div class="bar sta"><span id="staBar"></span></div>
       <div>Mana</div>
       <div class="bar mana"><span id="manaBar"></span></div>
+      <div class="small">Matériaux <span id="matText">0</span> | XP <span id="xpText">0/0</span></div>
       <div class="small">Sort: <span id="spellText">Aucun</span></div>
       <div class="small">Niveau <span id="lvlText">1</span> | Or <span id="goldText">0</span></div>
     </div>
@@ -549,6 +550,24 @@ button:active { transform: translateY(1px); }
     { name: 'Riven', role: 'Pisteur', zone: 2, dialog: 'Les ruines te suivent, pas l\'inverse.' }
   ];
 
+  const spellDisplayNames = {
+    bolt: 'Bolt',
+    fire: 'Boule de feu',
+    ice: 'Givre',
+    chain: 'Chaîne',
+    poison: 'Poison',
+    shield: 'Bouclier',
+    blink: 'Transfert',
+    summon: 'Invocation',
+    nova: 'Nova',
+    ward: 'Rempart',
+    light: 'Lumière',
+    life: 'Vie',
+    mine: 'Mine'
+  };
+
+  const spellName = (spellId) => spellDisplayNames[spellId] || spellId;
+
   const generateQuests = () => {
     const mainByAct = [
       [
@@ -609,22 +628,22 @@ button:active { transform: translateY(1px); }
 
   const npcQuestOffers = [
     {
-      id: 'spell-life',
+      id: 'spell-ward',
       giver: 'Frère Olin',
-      title: 'Serment Vital',
-      lore: 'Un souffle de vie se cache dans une grotte proche.',
+      title: 'Rituel du Veilleur',
+      lore: 'Va prévenir le veilleur de la grotte suivante, il t\'enseignera un rempart sacré.',
       targetZoneOffset: 1,
       targetNpc: zone => `Veilleur ${zone}`,
-      spell: 'life'
+      spell: 'ward'
     },
     {
-      id: 'spell-mine',
-      giver: 'Serek le Tisseur',
-      title: 'Cœur de Minerai',
-      lore: 'Les veines d\'une grotte voisine battent encore.',
+      id: 'spell-nova',
+      giver: 'Elyne, l\'Éclat Brisé',
+      title: 'Éclat du Gouffre',
+      lore: 'Annonce ta venue au veilleur des profondeurs. Il te donnera une onde d\'éclat.',
       targetZoneOffset: 1,
       targetNpc: zone => `Veilleur ${zone}`,
-      spell: 'mine'
+      spell: 'nova'
     }
   ];
 
@@ -633,6 +652,7 @@ button:active { transform: translateY(1px); }
   const buildNpcSpellQuest = (offer, zone) => {
     const targetZone = clamp(zone + offer.targetZoneOffset, 0, zones.length - 1);
     const targetNpcName = offer.targetNpc(targetZone);
+    const spellLabel = spellName(offer.spell);
     return {
       id: `side-${offer.id}-${targetZone}`,
       title: offer.title,
@@ -640,8 +660,7 @@ button:active { transform: translateY(1px); }
       zone: targetZone,
       lore: offer.lore,
       steps: [
-        { desc: `Parler au ${targetNpcName} dans la grotte`, trigger: 'talk', goal: 1, progress: 0, npc: targetNpcName, zone: targetZone },
-        { desc: `Retourner voir ${offer.giver}`, trigger: 'talk', goal: 1, progress: 0, npc: offer.giver, zone }
+        { desc: `Parler au ${targetNpcName} dans la grotte (apprendre: ${spellLabel})`, trigger: 'talk', goal: 1, progress: 0, npc: targetNpcName, zone: targetZone }
       ],
       rewards: { gold: 12, materials: 1, spell: offer.spell }
     };
@@ -707,6 +726,18 @@ button:active { transform: translateY(1px); }
     return progress.steps[progress.stepIndex];
   };
 
+  const getActiveTalkQuest = (npcName, zone) => {
+    return quests.find((quest) => {
+      const progress = state.quests[quest.id];
+      if (!progress || progress.done) return false;
+      const step = progress.steps[progress.stepIndex];
+      if (!step || step.trigger !== 'talk') return false;
+      if (step.npc && step.npc !== npcName) return false;
+      if (step.zone !== undefined && step.zone !== zone) return false;
+      return true;
+    }) || null;
+  };
+
   const applyQuestReward = (quest) => {
     const reward = quest.rewards || {};
     if (reward.gold) state.gold += reward.gold;
@@ -717,7 +748,7 @@ button:active { transform: translateY(1px); }
     if (reward.spell) {
       if (!state.unlockedSpells) state.unlockedSpells = [];
       if (!state.unlockedSpells.includes(reward.spell)) state.unlockedSpells.push(reward.spell);
-      showToast(`Sort débloqué: ${reward.spell}`);
+      showToast(`Sort appris: ${spellName(reward.spell)}`);
     }
     updateBars();
   };
@@ -756,6 +787,20 @@ button:active { transform: translateY(1px); }
     if (!quest) return null;
     const step = getQuestStep(quest.id);
     if (!step) return null;
+    const zoneNow = currentZone();
+    if (step.zone !== undefined && step.zone !== zoneNow) {
+      if (state.inSubzone) {
+        const exit = state.subzoneInteractables?.find(i => i.type === 'subzone_exit');
+        if (exit) return { x: exit.x, y: exit.y, zone: zoneNow, targetZone: step.zone };
+      }
+      if (state.inHub) {
+        const rift = state.hubInteractables?.find(i => i.type === 'rift_return');
+        if (rift) return { x: rift.x, y: rift.y, zone: zoneNow, targetZone: step.zone };
+      }
+      const flow = state.zoneFlow[`zone-${zoneNow}`];
+      const gate = step.zone > zoneNow ? flow?.gate : flow?.backGate;
+      if (gate) return { x: gate.x, y: gate.y, zone: zoneNow, targetZone: step.zone };
+    }
     if (step.trigger === 'talk') {
       const subNpc = state.subzoneInteractables?.find(i => i.type === 'subzone_npc' && i.name === step.npc);
       if (subNpc) return { x: subNpc.x, y: subNpc.y, zone: step.zone };
@@ -965,6 +1010,7 @@ button:active { transform: translateY(1px); }
   };
 
   const buildSubzoneMap = () => {
+    const zone = currentZone();
     const tiles = Array.from({ length: SUB_MAP }, () => Array(SUB_MAP).fill(0));
     const ores = [];
     for (let y = 0; y < SUB_MAP; y++) {
@@ -984,6 +1030,20 @@ button:active { transform: translateY(1px); }
     }
     const center = Math.floor(SUB_MAP / 2);
     tiles[center][center] = 0;
+    if (zone === 0) {
+      const bonusOffsets = [
+        { dx: -2, dy: -3 },
+        { dx: 3, dy: -1 },
+        { dx: -3, dy: 2 },
+        { dx: 2, dy: 3 }
+      ];
+      bonusOffsets.forEach(({ dx, dy }) => {
+        const tx = clamp(center + dx, 1, SUB_MAP - 2);
+        const ty = clamp(center + dy, 1, SUB_MAP - 2);
+        tiles[ty][tx] = 13;
+        ores.push({ x: tx * TILE, y: ty * TILE, hp: 3, maxHp: 3 });
+      });
+    }
     state.subzoneMap = tiles;
     state.subzoneInteractables = [
       { id: 'subzone-exit', type: 'subzone_exit', x: center * TILE, y: center * TILE },
@@ -1941,6 +2001,8 @@ button:active { transform: translateY(1px); }
     document.getElementById('spellText').textContent = state.selectedSpell ? state.selectedSpell.name : 'Aucun';
     document.getElementById('lvlText').textContent = state.player.level;
     document.getElementById('goldText').textContent = state.gold;
+    document.getElementById('matText').textContent = state.materials;
+    document.getElementById('xpText').textContent = `${Math.floor(state.player.xp)}/${state.player.xpNext}`;
     const zoneIndex = currentZone();
     const actIndex = Math.floor(zoneIndex / 5);
     const zoneLocal = zoneIndex % 5;
@@ -2030,6 +2092,10 @@ button:active { transform: translateY(1px); }
         if (it.type === 'notice') drawDot(it.x, it.y, '#a3e635', 3);
       });
       getActiveNpcs().forEach(npc => drawDot(npc.x, npc.y, '#a3e635', 2.6));
+      const trackedTarget = getTrackedTarget();
+      if (trackedTarget && trackedTarget.zone === zoneIndex) {
+        drawDot(trackedTarget.x, trackedTarget.y, '#fbbf24', 3);
+      }
       drawDot(state.player.x, state.player.y, '#22c55e', 3);
       return;
     }
@@ -2472,7 +2538,7 @@ button:active { transform: translateY(1px); }
               addItem({ type: 'relic', name: 'Relique lumineuse' });
               if (!state.unlockedSpells.includes('light')) {
                 state.unlockedSpells.push('light');
-                showToast('Sort débloqué: Lumière');
+                showToast(`Sort appris: ${spellName('light')}`);
               }
             }
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
@@ -2671,6 +2737,7 @@ button:active { transform: translateY(1px); }
       state.subzoneOres = state.subzoneOres.filter(o => o !== closest);
       state.materials += 1;
       showToast('Minerai extrait +1');
+      updateBars();
     } else {
       showToast(`Minerai ${closest.hp}/${closest.maxHp}`);
     }
@@ -2879,7 +2946,7 @@ button:active { transform: translateY(1px); }
               addItem({ type: 'relic', name: 'Relique lumineuse' });
               if (!state.unlockedSpells.includes('light')) {
                 state.unlockedSpells.push('light');
-                showToast('Sort débloqué: Lumière');
+                showToast(`Sort appris: ${spellName('light')}`);
               }
             }
             if (Math.random() > 0.85) spawnDrop(rollItem(currentZone()), e.x, e.y);
@@ -3002,7 +3069,7 @@ button:active { transform: translateY(1px); }
       state.player.xpNext = Math.floor(state.player.xpNext * 1.2);
       state.player.statPoints += 2;
       applyBaseStatDelta({ hpMax: 10 }, { refill: true });
-      showToast('Niveau supérieur!');
+      showToast('Niveau supérieur! +10 PV max, +2 points de stats.');
     }
   };
 
@@ -3167,9 +3234,39 @@ button:active { transform: translateY(1px); }
     if (state.inSubzone) {
       const subNpc = nearest(getActiveInteractables().filter(i => i.type === 'subzone_npc'), NPC_RANGE);
       if (subNpc) {
+        const activeQuest = getActiveTalkQuest(subNpc.name, zone);
+        const questSpell = activeQuest?.rewards?.spell;
+        const questSpellName = questSpell ? spellName(questSpell) : null;
+        if (zone === 0) {
+          const firstVisit = !state.npcQuestFlags.subzoneIntro;
+          if (firstVisit) {
+            if (!state.unlockedSpells.includes('mine')) {
+              state.unlockedSpells.push('mine');
+              showToast(`Sort appris: ${spellName('mine')}`);
+            }
+            state.npcQuestFlags.subzoneIntro = true;
+          }
+          if (activeQuest) updateQuestProgress('talk', { npc: subNpc.name, zone });
+          const introText = firstVisit
+            ? 'Bienvenue, Marqué. Cette grotte est le cœur vivant du serment: ici, la pierre garde les voix anciennes. Je t\'enseigne le rite de Mine pour extraire nos veines. Mes collègues, plus loin, n\'écoutent que ceux dont l\'arrivée a été annoncée.'
+            : 'Le cœur a parlé. Souviens-toi: les veilleurs des grottes suivantes demandent un nom avant de transmettre leur savoir.';
+          openDialogue(subNpc, introText, [
+            { label: 'Compris', onPick: () => showToast('Le veilleur se tait.') }
+          ]);
+          return;
+        }
+        if (!activeQuest) {
+          openDialogue(subNpc, 'Qui t\'envoie, Marqué? Reviens avec un nom, sinon je garde le silence.', [
+            { label: 'Repartir', onPick: () => showToast('Le silence retombe.') }
+          ]);
+          return;
+        }
         updateQuestProgress('talk', { npc: subNpc.name, zone });
-        openDialogue(subNpc, subNpc.dialog || 'La grotte répond à ceux qui écoutent.', [
-          { label: 'Écouter', onPick: () => showToast('Le savoir résonne dans la pierre.') }
+        const learnText = questSpellName
+          ? `On m\'a annoncé ta venue. Je t\'apprends : ${questSpellName}.`
+          : 'On m\'a annoncé ta venue. Le savoir circule à nouveau.';
+        openDialogue(subNpc, learnText, [
+          { label: 'Recevoir', onPick: () => showToast('Le serment te reconnaît.') }
         ]);
         return;
       }
@@ -3717,9 +3814,14 @@ button:active { transform: translateY(1px); }
     if (!state.explored) state.explored = {};
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
-    if (!state.selectedSpell) state.selectedSpell = null;
     if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
-      state.unlockedSpells = ['bolt'];
+      state.unlockedSpells = ['life'];
+    }
+    if (state.selectedSpell?.id) {
+      state.selectedSpell = spells.find(spell => spell.id === state.selectedSpell.id) || null;
+    }
+    if (!state.selectedSpell) {
+      state.selectedSpell = spells.find(spell => state.unlockedSpells.includes(spell.id)) || null;
     }
     if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.spellCooldowns) state.spellCooldowns = {};
@@ -3955,6 +4057,7 @@ button:active { transform: translateY(1px); }
       <div class="small">Or: ${state.gold}</div>
       <div class="small">Matériaux: ${state.materials}</div>
       <div class="small">Potions: ${state.player.inv.filter(it => it.type === 'potion').length}</div>
+      <div class="small">Chaque niveau: +10 PV max, +2 points de stats.</div>
     `;
     points.innerHTML = '';
     ['str','agi','spi','vit'].forEach(stat => {
@@ -4155,7 +4258,8 @@ button:active { transform: translateY(1px); }
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     applyEquipmentStats();
-    state.unlockedSpells = ['bolt'];
+    state.unlockedSpells = ['life'];
+    state.selectedSpell = spells.find(spell => spell.id === 'life') || null;
     state.running = true;
     state.paused = false;
     state.dead = false;
