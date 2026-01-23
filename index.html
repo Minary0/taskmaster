@@ -159,6 +159,7 @@ button:active { transform: translateY(1px); }
     </div>
     <div class="panel hud-right">
       <div id="zoneText">Zone</div>
+      <div id="zoneName" class="small"></div>
       <div id="questText" class="small">Objectif</div>
       <canvas id="minimap" width="120" height="120"></canvas>
     </div>
@@ -590,7 +591,17 @@ button:active { transform: translateY(1px); }
     return npc ? npc.name : npcs[0]?.name || 'Frère Olin';
   };
 
+  const shuffleArray = (list, rng) => {
+    const arr = [...list];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
   const buildMainQuestPool = () => {
+    const rng = rand(state.seed + 4242);
     const mainByAct = [
       [
         { title: 'Serment des Cendres', lore: 'Le marais répond à ceux qui prêtent serment.' },
@@ -622,12 +633,15 @@ button:active { transform: translateY(1px); }
     const spellUnlocks = ['chain', 'poison', 'shield', 'blink', 'summon'];
     acts.forEach((act, actIndex) => {
       const baseZone = actIndex * 5;
-      mainByAct[actIndex].forEach((entry, i) => {
+      const shuffled = shuffleArray(mainByAct[actIndex], rng);
+      shuffled.forEach((entry, i) => {
         const id = `main-${actIndex}-${i}`;
         const zoneId = baseZone + i;
-        const npcName = getZoneNpcName(zoneId);
-        const steps = [
-          { desc: `Parler à ${npcName}`, trigger: 'talk', goal: 1, progress: 0, npc: npcName, zone: zoneId }
+    const steps = [
+      { desc: 'Détruire 3 noyaux de brume', trigger: 'orb', goal: 3, progress: 0, zone: zoneId },
+      { desc: 'Activer l\'autel', trigger: 'altar', goal: 1, progress: 0, zone: zoneId },
+      { desc: 'Vaincre le seigneur de zone', trigger: 'boss', goal: 1, progress: 0, zone: zoneId },
+          { desc: 'Ouvrir la porte', trigger: 'gate', goal: 1, progress: 0, zone: zoneId }
         ];
         const rewards = { gold: 40 + actIndex * 10, materials: 2 + actIndex, item: true };
         if (i === 2) rewards.spell = spellUnlocks[actIndex];
@@ -644,7 +658,35 @@ button:active { transform: translateY(1px); }
     });
     return quests;
   };
+  const buildSideQuestPool = () => {
+    const rng = rand(state.seed + 7777);
+    const pool = [];
+    const makeRelicQuest = (actIndex) => {
+      const baseZone = actIndex * 5;
+      const giver = getZoneNpcName(baseZone);
+      const recipient = getZoneNpcName(clamp(baseZone + 1, 0, zones.length - 1));
+      return {
+        id: `side-relic-${actIndex}`,
+        title: `Relique de l'Acte ${actIndex + 1}`,
+        type: 'side',
+        zone: baseZone,
+        lore: 'Une relique doit voyager de main en main.',
+        unlockAt: actIndex * 3 + 1,
+        steps: [
+          { desc: `Parler à ${giver} (recevoir la relique)`, trigger: 'talk', goal: 1, progress: 0, npc: giver, zone: baseZone, giveItem: { type: 'relic', name: 'Relique scellée' } },
+          { desc: `Remettre la relique à ${recipient}`, trigger: 'talk', goal: 1, progress: 0, npc: recipient, zone: clamp(baseZone + 1, 0, zones.length - 1), itemType: 'relic' }
+        ],
+        rewards: { gold: 25 + actIndex * 10, materials: 1 + actIndex }
+      };
+    };
+    for (let actIndex = 0; actIndex < acts.length; actIndex++) {
+      pool.push(makeRelicQuest(actIndex));
+    }
+    return shuffleArray(pool, rng);
+  };
+
   let mainQuestPool = buildMainQuestPool();
+  let sideQuestPool = buildSideQuestPool();
   let quests = [];
 
   const npcQuestOffers = [
@@ -655,7 +697,8 @@ button:active { transform: translateY(1px); }
       lore: 'Va prévenir le veilleur de la grotte suivante, il t\'enseignera un rempart sacré.',
       targetZoneOffset: 1,
       targetNpc: zone => `Veilleur ${zone}`,
-      spell: 'ward'
+      spell: 'ward',
+      unlockAt: 1
     },
     {
       id: 'spell-nova',
@@ -664,11 +707,15 @@ button:active { transform: translateY(1px); }
       lore: 'Annonce ta venue au veilleur des profondeurs. Il te donnera une onde d\'éclat.',
       targetZoneOffset: 1,
       targetNpc: zone => `Veilleur ${zone}`,
-      spell: 'nova'
+      spell: 'nova',
+      unlockAt: 4
     }
   ];
 
-  const getNpcQuestOffer = (npc) => npcQuestOffers.find(offer => offer.giver === npc.name) || null;
+  const getNpcQuestOffer = (npc) => {
+    if (quests.some(q => q.type === 'side')) return null;
+    return npcQuestOffers.find(offer => offer.giver === npc.name && state.mainQuestIndex >= (offer.unlockAt || 0)) || null;
+  };
 
   const buildNpcSpellQuest = (offer, zone) => {
     const targetZone = clamp(zone + offer.targetZoneOffset, 0, zones.length - 1);
@@ -705,6 +752,7 @@ button:active { transform: translateY(1px); }
   const addQuest = (quest) => {
     addQuestState(quest);
     state.dynamicQuests.push(quest);
+    if (quest.type === 'side' && !state.activeSideQuestId) state.activeSideQuestId = quest.id;
   };
 
   const lore = [
@@ -784,6 +832,16 @@ button:active { transform: translateY(1px); }
     if (state.trackedQuestId === questId) state.trackedQuestId = null;
   };
 
+  const unlockNextSideQuest = () => {
+    if (state.activeSideQuestId) return;
+    const next = sideQuestPool[state.sideQuestIndex];
+    if (!next) return;
+    if (state.mainQuestIndex < (next.unlockAt || 0)) return;
+    addQuestState(next);
+    state.activeSideQuestId = next.id;
+    showToast(`Nouvelle quête secondaire: ${next.title}`);
+  };
+
   const unlockNextMainQuest = (completedId) => {
     const index = mainQuestPool.findIndex(q => q.id === completedId);
     if (index < 0) return;
@@ -792,10 +850,12 @@ button:active { transform: translateY(1px); }
     state.mainQuestIndex = index + 1;
     addQuestState(next);
     showToast(`Nouvelle quête principale: ${next.title}`);
+    unlockNextSideQuest();
   };
 
   const updateQuestProgress = (trigger, payload) => {
     const completedMain = [];
+    const completedSide = [];
     quests.forEach((quest) => {
       const progress = state.quests[quest.id];
       if (!progress || progress.done) return;
@@ -807,12 +867,14 @@ button:active { transform: translateY(1px); }
       if (step.itemType && payload?.itemType && step.itemType !== payload.itemType) return;
       step.progress = clamp(step.progress + (payload?.amount || 1), 0, step.goal);
       if (step.progress >= step.goal) {
+        if (step.giveItem) addItem({ ...step.giveItem });
         progress.stepIndex += 1;
         if (progress.stepIndex >= progress.steps.length) {
           progress.done = true;
           showToast(`Quête terminée: ${quest.title}`);
           applyQuestReward(quest);
           if (quest.type === 'main') completedMain.push(quest.id);
+          if (quest.type === 'side') completedSide.push(quest.id);
         } else {
           showToast(`Étape complétée: ${quest.title}`);
         }
@@ -821,6 +883,14 @@ button:active { transform: translateY(1px); }
     completedMain.forEach((questId) => {
       removeQuest(questId);
       unlockNextMainQuest(questId);
+    });
+    completedSide.forEach((questId) => {
+      removeQuest(questId);
+      if (state.activeSideQuestId === questId) state.activeSideQuestId = null;
+      if (sideQuestPool[state.sideQuestIndex]?.id === questId) {
+        state.sideQuestIndex = Math.min(state.sideQuestIndex + 1, sideQuestPool.length);
+      }
+      unlockNextSideQuest();
     });
   };
 
@@ -866,6 +936,10 @@ button:active { transform: translateY(1px); }
       if (state.boss && currentZone() === step.zone) return { x: state.boss.x, y: state.boss.y, zone: step.zone };
       const flow = state.zoneFlow[`zone-${step.zone}`];
       if (flow?.altar) return { x: flow.altar.x, y: flow.altar.y, zone: step.zone };
+    }
+    if (step.trigger === 'gate') {
+      const flow = state.zoneFlow[`zone-${step.zone}`];
+      if (flow?.gate) return { x: flow.gate.x, y: flow.gate.y, zone: step.zone };
     }
     if (step.trigger === 'altar') {
       const flow = state.zoneFlow[`zone-${step.zone}`];
@@ -919,6 +993,8 @@ button:active { transform: translateY(1px); }
     gold: 0,
     corruptionAbsorbed: 0,
     mainQuestIndex: 0,
+    sideQuestIndex: 0,
+    activeSideQuestId: null,
     npcs: [],
     worldNpcs: [],
     hubNpcs: [],
@@ -1395,6 +1471,8 @@ button:active { transform: translateY(1px); }
       gold: 0,
       corruptionAbsorbed: 0,
       mainQuestIndex: 0,
+      sideQuestIndex: 0,
+      activeSideQuestId: null,
       npcs: [],
       worldNpcs: [],
       hubNpcs: [],
@@ -2067,11 +2145,14 @@ button:active { transform: translateY(1px); }
     const zoneLocal = zoneIndex % 5;
     if (state.inHub) {
       document.getElementById('zoneText').textContent = `Sanctuaire — ${acts[state.hubActId].name}`;
+      document.getElementById('zoneName').textContent = 'Sanctuaire';
       document.getElementById('questText').textContent = 'Objectif: Repos & préparation';
     } else {
       const zone = zones[zoneIndex];
       document.getElementById('zoneText').textContent = `${acts[actIndex].name} — Zone ${zoneLocal + 1}/5`;
-      const obj = 'Parler aux habitants';
+      document.getElementById('zoneName').textContent = state.inSubzone ? `Grotte — ${zone.name}` : zone.name;
+      const flow = state.zoneFlow[`zone-${zone.id}`];
+      const obj = flow ? (flow.orbsDestroyed < 3 ? `Détruire les noyaux ${flow.orbsDestroyed}/3` : flow.keyDropped ? 'Ouvrir la porte' : state.boss ? 'Vaincre le seigneur' : 'Activer l\'autel') : 'Explorer la zone';
       document.getElementById('questText').textContent = `Objectif: ${obj}`;
     }
     const trackedQuest = getTrackedQuest();
@@ -2105,6 +2186,7 @@ button:active { transform: translateY(1px); }
           if (t === 6) mctx.fillStyle = '#475569';
           else if (t === 3) mctx.fillStyle = '#374151';
           else if (t === 4) mctx.fillStyle = '#1f2d1f';
+          else if (t === 13) mctx.fillStyle = '#a16207';
           else mctx.fillStyle = '#1b2230';
           mctx.fillRect(x * TILE * scale, y * TILE * scale, TILE * scale, TILE * scale);
         }
@@ -3150,27 +3232,44 @@ button:active { transform: translateY(1px); }
     const zone = currentZone();
     if (!state.inHub) initZoneFlow(zone);
     const flow = state.zoneFlow[`zone-${zone}`];
-    const nearest = (items, range) => {
-      let best = null;
-      let bestDist = Infinity;
-      items.forEach(item => {
+    const { camX, camY } = getCamera();
+    let cursorHintShown = false;
+    const cursorWorld = { x: camX + state.mouse.x, y: camY + state.mouse.y };
+    const selectNearest = (items, range) => {
+      const inRange = items.filter(item => {
         const dx = item.x - state.player.x;
         const dy = item.y - state.player.y;
-        const dist = dx * dx + dy * dy;
-        if (dist < range * range && dist < bestDist) {
-          best = item;
-          bestDist = dist;
-        }
+        return dx * dx + dy * dy < range * range;
       });
-      return best;
+      if (!inRange.length) return null;
+      if (inRange.length === 1) return inRange[0];
+      const hovered = inRange.filter(item => {
+        const dx = item.x - cursorWorld.x;
+        const dy = item.y - cursorWorld.y;
+        return dx * dx + dy * dy < 26 * 26;
+      });
+      if (!hovered.length) {
+        if (!cursorHintShown) {
+          showToast('Ciblez avec le curseur.');
+          cursorHintShown = true;
+        }
+        return null;
+      }
+      return hovered.reduce((best, item) => {
+        const dx = item.x - cursorWorld.x;
+        const dy = item.y - cursorWorld.y;
+        const dist = dx * dx + dy * dy;
+        if (!best || dist < best.dist) return { item, dist };
+        return best;
+      }, null).item;
     };
-    const drop = state.inHub ? null : nearest(state.drops, DROP_PICKUP_RANGE);
+    const drop = state.inHub ? null : selectNearest(state.drops, DROP_PICKUP_RANGE);
     if (drop) {
       addItem(drop.item);
       state.drops = state.drops.filter(d => d !== drop);
       return;
     }
-    const rift = nearest(getActiveInteractables().filter(i => i.type === 'rift_sanctuary' || i.type === 'rift_return'), GATE_RANGE);
+    const rift = selectNearest(getActiveInteractables().filter(i => i.type === 'rift_sanctuary' || i.type === 'rift_return'), GATE_RANGE);
     if (rift) {
       if (rift.type === 'rift_return') {
         exitSanctuary();
@@ -3182,7 +3281,7 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const gate = nearest(getActiveInteractables().filter(i => i.type === 'gate' || i.type === 'act_gate'), GATE_RANGE);
+    const gate = selectNearest(getActiveInteractables().filter(i => i.type === 'gate' || i.type === 'act_gate'), GATE_RANGE);
     const teleportThroughGate = (direction) => {
       const targetZone = direction === 'forward'
         ? clamp(zone + 1, 0, zones.length - 1)
@@ -3234,12 +3333,13 @@ button:active { transform: translateY(1px); }
         return;
       }
       if (!gate.locked) {
+        updateQuestProgress('gate', { zone });
         teleportThroughGate(gate.direction);
         return;
       }
       showToast('Porte verrouillée.');
     }
-    const orb = nearest(getActiveInteractables().filter(i => i.type === 'orb' && i.active), ORB_RANGE);
+    const orb = selectNearest(getActiveInteractables().filter(i => i.type === 'orb' && i.active), ORB_RANGE);
     if (orb) {
       orb.active = false;
       flow.orbsDestroyed += 1;
@@ -3253,8 +3353,8 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const altar = nearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
-    const altarReady = altar || (flow.orbsDestroyed >= 3 && nearest(getActiveInteractables().filter(i => i.type === 'altar'), ALTAR_RANGE));
+    const altar = selectNearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
+    const altarReady = altar || (flow.orbsDestroyed >= 3 && selectNearest(getActiveInteractables().filter(i => i.type === 'altar'), ALTAR_RANGE));
     if (!state.inHub && altarReady) {
       updateQuestProgress('altar', { zone });
       if (flow.bossState.defeated) {
@@ -3278,17 +3378,17 @@ button:active { transform: translateY(1px); }
       }
       return;
     }
-    const subzoneGate = nearest(getActiveInteractables().filter(i => i.type === 'subzone_gate'), GATE_RANGE);
+    const subzoneGate = selectNearest(getActiveInteractables().filter(i => i.type === 'subzone_gate'), GATE_RANGE);
     if (!state.inHub && !state.inSubzone && subzoneGate) {
       enterSubzone(subzoneGate);
       return;
     }
-    const subzoneExit = nearest(getActiveInteractables().filter(i => i.type === 'subzone_exit'), GATE_RANGE);
+    const subzoneExit = selectNearest(getActiveInteractables().filter(i => i.type === 'subzone_exit'), GATE_RANGE);
     if (state.inSubzone && subzoneExit) {
       exitSubzone();
       return;
     }
-    const relic = nearest(getActiveInteractables().filter(i => i.type === 'relic'), ORB_RANGE);
+    const relic = selectNearest(getActiveInteractables().filter(i => i.type === 'relic'), ORB_RANGE);
     if (relic) {
       state.interactables = state.interactables.filter(i => i !== relic);
       flow.event.done = true;
@@ -3296,7 +3396,7 @@ button:active { transform: translateY(1px); }
       updateQuestProgress('visit', { zone });
       return;
     }
-    const shrine = nearest(getActiveInteractables().filter(i => i.type === 'shrine'), ORB_RANGE);
+    const shrine = selectNearest(getActiveInteractables().filter(i => i.type === 'shrine'), ORB_RANGE);
     if (shrine) {
       flow.event.done = true;
       state.interactables = state.interactables.filter(i => i !== shrine);
@@ -3305,7 +3405,7 @@ button:active { transform: translateY(1px); }
       return;
     }
     if (state.inSubzone) {
-      const subNpc = nearest(getActiveInteractables().filter(i => i.type === 'subzone_npc'), NPC_RANGE);
+      const subNpc = selectNearest(getActiveInteractables().filter(i => i.type === 'subzone_npc'), NPC_RANGE);
       if (subNpc) {
         const activeQuest = getActiveTalkQuest(subNpc.name, zone);
         const questSpell = activeQuest?.rewards?.spell;
@@ -3344,7 +3444,7 @@ button:active { transform: translateY(1px); }
         return;
       }
     }
-    const rest = nearest(getActiveInteractables().filter(i => i.type === 'rest'), REST_RANGE);
+    const rest = selectNearest(getActiveInteractables().filter(i => i.type === 'rest'), REST_RANGE);
     if (state.inHub && rest) {
       state.player.hp = state.player.hpMax;
       state.player.mana = state.player.manaMax;
@@ -3352,26 +3452,26 @@ button:active { transform: translateY(1px); }
       return;
     }
     if (state.inHub) {
-      const fountain = nearest(getActiveInteractables().filter(i => i.type === 'fountain'), REST_RANGE);
+      const fountain = selectNearest(getActiveInteractables().filter(i => i.type === 'fountain'), REST_RANGE);
       if (fountain) {
         state.player.hp = state.player.hpMax;
         state.player.mana = state.player.manaMax;
         showToast('La fontaine apaise vos blessures.');
         return;
       }
-      const bench = nearest(getActiveInteractables().filter(i => i.type === 'bench'), REST_RANGE);
+      const bench = selectNearest(getActiveInteractables().filter(i => i.type === 'bench'), REST_RANGE);
       if (bench) {
         applyTimedBonus('def', 2, 5000);
         showToast('Repos profond: défense temporaire.');
         return;
       }
-      const notice = nearest(getActiveInteractables().filter(i => i.type === 'notice'), REST_RANGE);
+      const notice = selectNearest(getActiveInteractables().filter(i => i.type === 'notice'), REST_RANGE);
       if (notice) {
         openPanel('journal');
         renderJournal();
         return;
       }
-      const forge = nearest(getActiveInteractables().filter(i => i.type === 'forge'), REST_RANGE);
+      const forge = selectNearest(getActiveInteractables().filter(i => i.type === 'forge'), REST_RANGE);
       if (forge) {
         if (state.materials < 1) {
           showToast('Il faut 1 matériau.');
@@ -3382,22 +3482,34 @@ button:active { transform: translateY(1px); }
         showToast('Forge: arme renforcée.');
         return;
       }
-      const library = nearest(getActiveInteractables().filter(i => i.type === 'library'), REST_RANGE);
+      const library = selectNearest(getActiveInteractables().filter(i => i.type === 'library'), REST_RANGE);
       if (library) {
         const entry = lore[Math.floor(Math.random() * lore.length)];
         showToast(entry);
         return;
       }
-      const oath = nearest(getActiveInteractables().filter(i => i.type === 'oath'), REST_RANGE);
+      const oath = selectNearest(getActiveInteractables().filter(i => i.type === 'oath'), REST_RANGE);
       if (oath) {
         applyTimedBonus('speed', 8, 6000);
         showToast('Serment scellé: vitesse accrue.');
         return;
       }
     }
-    const nearNpc = nearest(getActiveNpcs(), NPC_RANGE);
+    const nearNpc = selectNearest(getActiveNpcs(), NPC_RANGE);
     if (nearNpc) {
-      updateQuestProgress('talk', { npc: nearNpc.name, zone });
+      const activeQuest = getActiveTalkQuest(nearNpc.name, zone);
+      const step = activeQuest ? getQuestStep(activeQuest.id) : null;
+      if (step?.itemType) {
+        const itemIndex = state.player.inv.findIndex(it => it.type === step.itemType);
+        if (itemIndex >= 0) {
+          state.player.inv.splice(itemIndex, 1);
+          updateQuestProgress('talk', { npc: nearNpc.name, zone, itemType: step.itemType });
+        } else {
+          showToast('Il vous manque l\'objet demandé.');
+        }
+      } else {
+        updateQuestProgress('talk', { npc: nearNpc.name, zone });
+      }
       if (state.inHub) {
         renderHubPanel();
         openPanel('hub-panel');
@@ -3908,17 +4020,27 @@ button:active { transform: translateY(1px); }
     if (!state.stats) state.stats = { kills: 0, loot: 0 };
     if (!state.dynamicQuests) state.dynamicQuests = [];
     mainQuestPool = buildMainQuestPool();
+    sideQuestPool = buildSideQuestPool();
     quests = [];
     if (typeof state.mainQuestIndex !== 'number') state.mainQuestIndex = 0;
     if (state.mainQuestIndex >= mainQuestPool.length) state.mainQuestIndex = Math.max(0, mainQuestPool.length - 1);
+    if (typeof state.sideQuestIndex !== 'number') state.sideQuestIndex = 0;
+    if (!state.activeSideQuestId) state.activeSideQuestId = null;
     const mainQuest = mainQuestPool[state.mainQuestIndex];
     if (mainQuest) addQuestState(mainQuest);
+    if (!state.activeSideQuestId) {
+      const dynamicSide = state.dynamicQuests.find(q => q.type === 'side');
+      if (dynamicSide) state.activeSideQuestId = dynamicSide.id;
+    }
+    const activeSide = sideQuestPool.find(q => q.id === state.activeSideQuestId);
+    if (activeSide) addQuestState(activeSide);
     state.dynamicQuests.forEach((quest) => addQuestState(quest));
     if (!state.quests || !Object.values(state.quests).some(q => q.steps)) {
       initQuestState();
     } else if (mainQuest) {
       ensureQuestState(mainQuest);
     }
+    unlockNextSideQuest();
     if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.explored) state.explored = {};
     state.explored = restoreExplored(state.explored);
@@ -4190,30 +4312,40 @@ button:active { transform: translateY(1px); }
   const renderJournal = () => {
     const questTab = document.getElementById('questTab');
     questTab.innerHTML = '';
-    quests.forEach(q => {
-      const progress = state.quests[q.id];
-      const done = progress?.done;
-      const step = progress?.steps?.[progress.stepIndex];
-      const tracked = state.trackedQuestId === q.id;
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `
-        <strong>${q.title}</strong>
-        <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>
-        <div class="small">${q.lore}</div>
-        <div>${step ? step.desc : 'Objectif accompli.'}</div>
-        ${step ? `<div class="small">Progression: ${step.progress}/${step.goal}</div>` : ''}
-      `;
-      const btn = document.createElement('button');
-      btn.textContent = tracked ? 'Ne plus suivre' : 'Suivre';
-      btn.addEventListener('click', () => {
-        state.trackedQuestId = tracked ? null : q.id;
-        renderJournal();
-        updateBars();
+    const renderSection = (title, list) => {
+      const header = document.createElement('div');
+      header.className = 'item';
+      header.innerHTML = `<strong>${title}</strong>`;
+      questTab.appendChild(header);
+      list.forEach(q => {
+        const progress = state.quests[q.id];
+        const done = progress?.done;
+        const step = progress?.steps?.[progress.stepIndex];
+        const tracked = state.trackedQuestId === q.id;
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <strong>${q.title}</strong>
+          <span class="tag ${done ? 'rare' : 'common'}">${done ? 'Terminé' : 'En cours'}</span>
+          <div class="small">${q.lore}</div>
+          <div>${step ? step.desc : 'Objectif accompli.'}</div>
+          ${step ? `<div class="small">Progression: ${step.progress}/${step.goal}</div>` : ''}
+        `;
+        const btn = document.createElement('button');
+        btn.textContent = tracked ? 'Ne plus suivre' : 'Suivre';
+        btn.addEventListener('click', () => {
+          state.trackedQuestId = tracked ? null : q.id;
+          renderJournal();
+          updateBars();
+        });
+        div.appendChild(btn);
+        questTab.appendChild(div);
       });
-      div.appendChild(btn);
-      questTab.appendChild(div);
-    });
+    };
+    const mains = quests.filter(q => q.type === 'main');
+    const sides = quests.filter(q => q.type === 'side');
+    if (mains.length) renderSection('Principale', mains);
+    if (sides.length) renderSection('Secondaire', sides);
   };
 
   const shopStock = [
@@ -4423,11 +4555,15 @@ button:active { transform: translateY(1px); }
     state.corruptionAbsorbed = 0;
     state.mineFreeUsed = false;
     mainQuestPool = buildMainQuestPool();
+    sideQuestPool = buildSideQuestPool();
     quests = [];
     state.mainQuestIndex = 0;
+    state.sideQuestIndex = 0;
+    state.activeSideQuestId = null;
     if (mainQuestPool[0]) addQuestState(mainQuestPool[0]);
     initQuestState();
     state.trackedQuestId = null;
+    unlockNextSideQuest();
     lore.forEach((_, i) => state.loreFound[i] = false);
     buildNpcInstances();
     state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
