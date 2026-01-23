@@ -231,10 +231,8 @@ button:active { transform: translateY(1px); }
       <h2>Journal</h2>
       <div class="tabs">
         <button data-tab="quests" class="active">Quêtes</button>
-        <button data-tab="lore">Chroniques</button>
       </div>
       <div id="questTab" class="list"></div>
-      <div id="loreTab" class="list hidden"></div>
     </div>
   </div>
 
@@ -561,6 +559,7 @@ button:active { transform: translateY(1px); }
     summon: 'Invocation',
     nova: 'Nova',
     ward: 'Rempart',
+    gravity: 'Poussée gravitationnelle',
     light: 'Lumière',
     life: 'Vie',
     mine: 'Mine'
@@ -605,8 +604,8 @@ button:active { transform: translateY(1px); }
         const zoneId = baseZone + i;
         const steps = [
           { desc: `Atteindre ${acts[actIndex].biome} — Zone ${i + 1}`, trigger: 'enterZone', goal: 1, progress: 0, zone: zoneId },
-          { desc: 'Détruire 2 noyaux de brume', trigger: 'orb', goal: 2, progress: 0, zone: zoneId },
-          { desc: 'Vaincre un seigneur de zone', trigger: 'boss', goal: 1, progress: 0, zone: zoneId }
+          { desc: 'Détruire 3 noyaux de brume', trigger: 'orb', goal: 3, progress: 0, zone: zoneId },
+          { desc: 'Activer l\'autel', trigger: 'altar', goal: 1, progress: 0, zone: zoneId }
         ];
         const rewards = { gold: 40 + actIndex * 10, materials: 2 + actIndex, item: true };
         if (i === 2) rewards.spell = spellUnlocks[actIndex];
@@ -806,6 +805,10 @@ button:active { transform: translateY(1px); }
       if (subNpc) return { x: subNpc.x, y: subNpc.y, zone: step.zone };
       const npc = state.worldNpcs?.find(n => n.name === step.npc) || npcs.find(n => n.name === step.npc);
       if (npc) return { x: npc.x, y: npc.y, zone: npc.zone };
+      if (step.npc?.startsWith('Veilleur')) {
+        const gate = state.interactables.find(i => i.type === 'subzone_gate' && Math.floor(i.x / (MAP * TILE)) === step.zone);
+        if (gate) return { x: gate.x, y: gate.y, zone: step.zone };
+      }
     }
     if (step.trigger === 'orb') {
       const orb = state.interactables.find(i => i.type === 'orb' && i.active && Math.floor(i.x / (MAP * TILE)) === step.zone);
@@ -813,6 +816,10 @@ button:active { transform: translateY(1px); }
     }
     if (step.trigger === 'boss') {
       if (state.boss && currentZone() === step.zone) return { x: state.boss.x, y: state.boss.y, zone: step.zone };
+      const flow = state.zoneFlow[`zone-${step.zone}`];
+      if (flow?.altar) return { x: flow.altar.x, y: flow.altar.y, zone: step.zone };
+    }
+    if (step.trigger === 'altar') {
       const flow = state.zoneFlow[`zone-${step.zone}`];
       if (flow?.altar) return { x: flow.altar.x, y: flow.altar.y, zone: step.zone };
     }
@@ -891,6 +898,7 @@ button:active { transform: translateY(1px); }
     spellCooldowns: {},
     trackedQuestId: null,
     castLockUntil: 0,
+    wardUntil: 0,
     lightUntil: 0,
     caveLightActive: false,
     minimapZoom: 20,
@@ -900,7 +908,8 @@ button:active { transform: translateY(1px); }
     lastDamageSource: 'Inconnu',
     unlockedSpells: [],
     dynamicQuests: [],
-    npcQuestFlags: {}
+    npcQuestFlags: {},
+    mineFreeUsed: false
   };
 
   const keys = { up: false, down: false, left: false, right: false, interact: false, dash: false };
@@ -2589,7 +2598,7 @@ button:active { transform: translateY(1px); }
 
   const spells = [
     { id: 'bolt', name: 'Bolt', effect: 'bolt', element: 'lightning', cost: 18, cooldown: 1.2, iconKey: 'staff', desc: 'Projectile rapide, choc léger.' },
-    { id: 'nova', name: 'Nova', effect: 'nova', element: 'arcane', cost: 26, cooldown: 2.4, iconKey: 'amulet', desc: 'Onde courte autour du Marqué.' },
+    { id: 'nova', name: 'Nova', effect: 'nova', element: 'arcane', cost: 38, cooldown: 3.0, iconKey: 'amulet', desc: 'Déflagration puissante autour du Marqué.' },
     { id: 'ice', name: 'Ice Spike', effect: 'ice', element: 'ice', cost: 22, cooldown: 1.8, iconKey: 'staff', desc: 'Ralenti et perce la brume.' },
     { id: 'fire', name: 'Fireball', effect: 'fire', element: 'fire', cost: 24, cooldown: 2.0, iconKey: 'staff', desc: 'Explosion ardente à l\'impact.' },
     { id: 'flare', name: 'Flare Shot', effect: 'flare', element: 'fire', cost: 20, cooldown: 2.6, iconKey: 'sword', desc: 'Volée incandescente en éventail.' },
@@ -2599,7 +2608,7 @@ button:active { transform: translateY(1px); }
     { id: 'poison', name: 'Poison Cloud', effect: 'poison', element: 'poison', cost: 20, cooldown: 3.0, iconKey: 'amulet', desc: 'Néfaste sur la durée.' },
     { id: 'shield', name: 'Shield', effect: 'shield', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'helm', desc: 'Bouclier bref, défense accrue.' },
     { id: 'blink', name: 'Blink', effect: 'blink', element: 'arcane', cost: 16, cooldown: 3.2, iconKey: 'boots', desc: 'Téléportation courte.' },
-    { id: 'gravity', name: 'Gravity Pull', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Ramène les ennemis.' },
+    { id: 'gravity', name: 'Gravity Push', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Repousse les ennemis.' },
     { id: 'summon', name: 'Summon Orb', effect: 'summon', element: 'arcane', cost: 30, cooldown: 5.0, iconKey: 'ring', desc: 'Orbe orbitale protectrice.' },
     { id: 'mine', name: 'Mine', effect: 'mine', element: 'earth', cost: 12, cooldown: 2.2, iconKey: 'gloves', desc: 'Brise les minerais en grotte.' },
     { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 6, cooldown: 2.0, iconKey: 'amulet', desc: 'Halo apaisant contre la brume.' }
@@ -2747,7 +2756,10 @@ button:active { transform: translateY(1px); }
   const castSpell = (spell) => {
     if (state.dead) return;
     const p = state.player;
-    const cost = spell.cost;
+    let cost = spell.cost;
+    if (spell.effect === 'mine' && state.mineFreeUsed) {
+      cost = 0;
+    }
     if (p.mana < cost) {
       showToast('Mana insuffisant');
       audio.tone(120, 0.1, 'sine', 0.05);
@@ -2764,14 +2776,14 @@ button:active { transform: translateY(1px); }
     } else if (spell.effect === 'nova') {
       state.enemies.forEach(e => {
         const dx = e.x - p.x; const dy = e.y - p.y;
-        if (dx * dx + dy * dy < 80 * 80) {
-          const dealt = applySpellDamage(e, 10 + magicPower * 0.4, 'arcane');
+        if (dx * dx + dy * dy < 110 * 110) {
+          const dealt = applySpellDamage(e, 18 + magicPower * 0.9, 'arcane');
           applyLifesteal(dealt);
         }
       });
-      for (let i = 0; i < 18; i++) {
-        const theta = (Math.PI * 2 * i) / 18;
-        state.particles.push({ x: p.x + Math.cos(theta) * 20, y: p.y + Math.sin(theta) * 20, vx: Math.cos(theta) * 30, vy: Math.sin(theta) * 30, life: 0.6, color: '#93c5fd' });
+      for (let i = 0; i < 26; i++) {
+        const theta = (Math.PI * 2 * i) / 26;
+        state.particles.push({ x: p.x + Math.cos(theta) * 26, y: p.y + Math.sin(theta) * 26, vx: Math.cos(theta) * 50, vy: Math.sin(theta) * 50, life: 0.7, color: '#93c5fd' });
       }
     } else if (spell.effect === 'ice') {
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 230, vy: Math.sin(angle) * 230, life: 1.1, dmg: 9 + magicPower * 0.35, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.8, element: 'ice' });
@@ -2815,9 +2827,10 @@ button:active { transform: translateY(1px); }
     } else if (spell.effect === 'ward') {
       applyTimedBonus('def', 3, 4000);
       p.hp = clamp(p.hp + p.hpMax * 0.12, 0, p.hpMax);
-      for (let i = 0; i < 12; i++) {
-        const theta = (Math.PI * 2 * i) / 12;
-        state.particles.push({ x: p.x + Math.cos(theta) * 14, y: p.y + Math.sin(theta) * 14, vx: Math.cos(theta) * 10, vy: Math.sin(theta) * 10, life: 0.5, color: '#c084fc' });
+      state.wardUntil = Math.max(state.wardUntil, nowSec() + 4.5);
+      for (let i = 0; i < 18; i++) {
+        const theta = (Math.PI * 2 * i) / 18;
+        state.particles.push({ x: p.x + Math.cos(theta) * 18, y: p.y + Math.sin(theta) * 18, vx: Math.cos(theta) * 16, vy: Math.sin(theta) * 16, life: 0.7, color: '#c084fc' });
       }
     } else if (spell.effect === 'life') {
       p.hp = clamp(p.hp + p.hpMax * 0.35, 0, p.hpMax);
@@ -2829,9 +2842,11 @@ button:active { transform: translateY(1px); }
       p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
     } else if (spell.effect === 'gravity') {
       state.enemies.forEach(e => {
-        e.x += (p.x - e.x) * 0.1;
-        e.y += (p.y - e.y) * 0.1;
-        e.slow = Math.max(e.slow || 0, 1.4);
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        e.x += dx * 0.35;
+        e.y += dy * 0.35;
+        e.slow = Math.max(e.slow || 0, 1.0);
       });
     } else if (spell.effect === 'summon') {
       const existing = state.projectiles.find(pr => pr.orbit);
@@ -2843,6 +2858,7 @@ button:active { transform: translateY(1px); }
       }
     } else if (spell.effect === 'mine') {
       if (!damageNearestOre()) return false;
+      if (!state.mineFreeUsed) state.mineFreeUsed = true;
     } else if (spell.effect === 'light') {
       if (!state.inSubzone) {
         showToast('La lumière n agit qu en grotte.');
@@ -3184,6 +3200,7 @@ button:active { transform: translateY(1px); }
     const altar = nearest(getActiveInteractables().filter(i => i.type === 'altar' && i.active), ALTAR_RANGE);
     const altarReady = altar || (flow.orbsDestroyed >= 3 && nearest(getActiveInteractables().filter(i => i.type === 'altar'), ALTAR_RANGE));
     if (!state.inHub && altarReady) {
+      updateQuestProgress('altar', { zone });
       if (flow.bossState.defeated) {
         showToast('L\'autel s\'est tu.');
         return;
@@ -3567,6 +3584,15 @@ button:active { transform: translateY(1px); }
     drawPlayerSprite(p);
     ctx.globalAlpha = 1;
     ctx.restore();
+    if (state.wardUntil > nowSec()) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(196, 132, 252, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x - camX, p.y - camY, 16 + Math.sin(state.time * 6) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && it.active) ctx.fillStyle = '#a855f7';
       else if (it.type === 'altar' && it.active) ctx.fillStyle = '#f59e0b';
@@ -3826,6 +3852,8 @@ button:active { transform: translateY(1px); }
     if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.spellCooldowns) state.spellCooldowns = {};
     if (!state.subzoneOres) state.subzoneOres = [];
+    if (typeof state.mineFreeUsed !== 'boolean') state.mineFreeUsed = false;
+    if (typeof state.wardUntil !== 'number') state.wardUntil = 0;
     if (state.inSubzone && !state.subzoneMap) buildSubzoneMap();
     if (!state.player.manaMax || state.player.manaMax <= 0) {
       const base = classes[state.player.classKey] || classes.blade;
@@ -4077,9 +4105,7 @@ button:active { transform: translateY(1px); }
 
   const renderJournal = () => {
     const questTab = document.getElementById('questTab');
-    const loreTab = document.getElementById('loreTab');
     questTab.innerHTML = '';
-    loreTab.innerHTML = '';
     quests.forEach(q => {
       const progress = state.quests[q.id];
       const done = progress?.done;
@@ -4103,12 +4129,6 @@ button:active { transform: translateY(1px); }
       });
       div.appendChild(btn);
       questTab.appendChild(div);
-    });
-    lore.forEach((entry, i) => {
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `<strong>Chronique ${i + 1}</strong><div>${entry}</div>`;
-      loreTab.appendChild(div);
     });
   };
 
@@ -4291,6 +4311,7 @@ button:active { transform: translateY(1px); }
     state.materials = 0;
     state.gold = 0;
     state.corruptionAbsorbed = 0;
+    state.mineFreeUsed = false;
     quests = generateQuests();
     initQuestState();
     state.trackedQuestId = null;
@@ -4590,7 +4611,7 @@ button:active { transform: translateY(1px); }
   });
 
   setTabs(document.getElementById('inventory'), ['equipTab', 'consumablesTab', 'alliesTab', 'questsTab']);
-  setTabs(document.getElementById('journal'), ['questTab', 'loreTab']);
+  setTabs(document.getElementById('journal'), ['questTab']);
 
   loadSettings();
   resize();
