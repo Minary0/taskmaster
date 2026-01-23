@@ -685,8 +685,8 @@ button:active { transform: translateY(1px); }
     return shuffleArray(pool, rng);
   };
 
-  let mainQuestPool = buildMainQuestPool();
-  let sideQuestPool = buildSideQuestPool();
+  let mainQuestPool = [];
+  let sideQuestPool = [];
   let quests = [];
 
   const npcQuestOffers = [
@@ -1036,6 +1036,9 @@ button:active { transform: translateY(1px); }
     npcQuestFlags: {},
     mineFreeUsed: false
   };
+
+  mainQuestPool = buildMainQuestPool();
+  sideQuestPool = buildSideQuestPool();
 
   const keys = { up: false, down: false, left: false, right: false, interact: false, dash: false };
   let joyActive = false;
