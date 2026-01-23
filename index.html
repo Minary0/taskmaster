@@ -577,14 +577,6 @@ button:active { transform: translateY(1px); }
         { title: 'Dernière Déchirure', lore: 'Le dernier acte s\'écrit dans la cendre.' }
       ]
     ];
-    const sideTemplates = [
-      { type: 'kill', title: 'Lame au Clair', lore: 'Les bêtes n\'aiment pas la lumière.', target: 'dash', count: 6 },
-      { type: 'talk', title: 'Voix des Marais', lore: 'Un mot suffit à sauver un souvenir.' },
-      { type: 'pickup', title: 'Relique Éteinte', lore: 'Une relique gèle le souffle du lieu.' },
-      { type: 'orb', title: 'Noyaux Dispersés', lore: 'Chaque noyau détruit apaise la Brume.' },
-      { type: 'visit', title: 'Pierres Résonnantes', lore: 'Les pierres aiment qu\'on revienne.' },
-      { type: 'subzone', title: 'Sous-zone oubliée', lore: 'Une grotte cache un fragment de lumière.' }
-    ];
     const quests = [];
     const spellUnlocks = ['chain', 'poison', 'shield', 'blink', 'summon'];
     acts.forEach((act, actIndex) => {
@@ -610,46 +602,60 @@ button:active { transform: translateY(1px); }
         });
       });
     });
-    zones.forEach((zone) => {
-      for (let i = 0; i < 2; i++) {
-        const template = sideTemplates[(zone.id + i) % sideTemplates.length];
-        const id = `side-${zone.id}-${i}`;
-        const steps = [];
-        if (template.type === 'kill') {
-          steps.push({ desc: `Éliminer ${template.count} ennemis rapides`, trigger: 'kill', goal: template.count, progress: 0, kind: template.target, zone: zone.id });
-        } else if (template.type === 'talk') {
-          const npc = npcs.find(n => n.zone === zone.id) || npcs[0];
-          steps.push({ desc: `Parler à ${npc.name}`, trigger: 'talk', goal: 1, progress: 0, npc: npc.name, zone: zone.id });
-        } else if (template.type === 'pickup') {
-          steps.push({ desc: 'Ramasser une relique rare', trigger: 'pickup', goal: 1, progress: 0, itemType: 'relic', zone: zone.id });
-        } else if (template.type === 'orb') {
-          steps.push({ desc: 'Détruire 1 noyau de brume', trigger: 'orb', goal: 1, progress: 0, zone: zone.id });
-        } else if (template.type === 'visit') {
-          steps.push({ desc: 'Atteindre le cercle sacré', trigger: 'visit', goal: 1, progress: 0, zone: zone.id });
-        } else if (template.type === 'subzone') {
-          steps.push({ desc: 'Entrer dans la sous-zone', trigger: 'enterSubzone', goal: 1, progress: 0, zone: zone.id });
-          steps.push({ desc: 'Vaincre le gardien', trigger: 'clearSubzone', goal: 1, progress: 0, zone: zone.id });
-          steps.push({ desc: 'Revenir au sanctuaire de surface', trigger: 'return', goal: 1, progress: 0, zone: zone.id });
-        }
-        const questRewards = { gold: 18, materials: 1 };
-        if (zone.id % 7 === 0 && i === 1) {
-          questRewards.spell = 'gravity';
-        }
-        quests.push({
-          id,
-          title: `${template.title} — Zone ${zone.zone + 1}`,
-          type: 'side',
-          zone: zone.id,
-          lore: template.lore,
-          steps,
-          rewards: questRewards
-        });
-      }
-    });
     return quests;
   };
 
-  const quests = generateQuests();
+  let quests = generateQuests();
+
+  const npcQuestOffers = [
+    {
+      id: 'spell-life',
+      giver: 'Frère Olin',
+      title: 'Serment Vital',
+      lore: 'Un souffle de vie se cache dans une grotte proche.',
+      targetZoneOffset: 1,
+      targetNpc: zone => `Veilleur ${zone}`,
+      spell: 'life'
+    },
+    {
+      id: 'spell-mine',
+      giver: 'Serek le Tisseur',
+      title: 'Cœur de Minerai',
+      lore: 'Les veines d\'une grotte voisine battent encore.',
+      targetZoneOffset: 1,
+      targetNpc: zone => `Veilleur ${zone}`,
+      spell: 'mine'
+    }
+  ];
+
+  const getNpcQuestOffer = (npc) => npcQuestOffers.find(offer => offer.giver === npc.name) || null;
+
+  const buildNpcSpellQuest = (offer, zone) => {
+    const targetZone = clamp(zone + offer.targetZoneOffset, 0, zones.length - 1);
+    const targetNpcName = offer.targetNpc(targetZone);
+    return {
+      id: `side-${offer.id}-${targetZone}`,
+      title: offer.title,
+      type: 'side',
+      zone: targetZone,
+      lore: offer.lore,
+      steps: [
+        { desc: `Parler au ${targetNpcName} dans la grotte`, trigger: 'talk', goal: 1, progress: 0, npc: targetNpcName, zone: targetZone },
+        { desc: `Retourner voir ${offer.giver}`, trigger: 'talk', goal: 1, progress: 0, npc: offer.giver, zone }
+      ],
+      rewards: { gold: 12, materials: 1, spell: offer.spell }
+    };
+  };
+
+  const addQuest = (quest) => {
+    quests.push(quest);
+    state.dynamicQuests.push(quest);
+    state.quests[quest.id] = {
+      stepIndex: 0,
+      steps: quest.steps.map(step => ({ ...step })),
+      done: false
+    };
+  };
 
   const lore = [
     'La Brume-Couronne naquit d\'un serment sans témoin.',
@@ -751,6 +757,8 @@ button:active { transform: translateY(1px); }
     const step = getQuestStep(quest.id);
     if (!step) return null;
     if (step.trigger === 'talk') {
+      const subNpc = state.subzoneInteractables?.find(i => i.type === 'subzone_npc' && i.name === step.npc);
+      if (subNpc) return { x: subNpc.x, y: subNpc.y, zone: step.zone };
       const npc = state.worldNpcs?.find(n => n.name === step.npc) || npcs.find(n => n.name === step.npc);
       if (npc) return { x: npc.x, y: npc.y, zone: npc.zone };
     }
@@ -820,6 +828,7 @@ button:active { transform: translateY(1px); }
     subzoneMap: null,
     subzoneReturn: null,
     subzoneInteractables: [],
+    subzoneOres: [],
     subzoneCleared: false,
     hubActId: 0,
     hubReturnPoint: null,
@@ -844,7 +853,9 @@ button:active { transform: translateY(1px); }
     activeZone: 0,
     shopType: 'general',
     lastDamageSource: 'Inconnu',
-    unlockedSpells: []
+    unlockedSpells: [],
+    dynamicQuests: [],
+    npcQuestFlags: {}
   };
 
   const keys = { up: false, down: false, left: false, right: false, interact: false, dash: false };
@@ -955,6 +966,7 @@ button:active { transform: translateY(1px); }
 
   const buildSubzoneMap = () => {
     const tiles = Array.from({ length: SUB_MAP }, () => Array(SUB_MAP).fill(0));
+    const ores = [];
     for (let y = 0; y < SUB_MAP; y++) {
       for (let x = 0; x < SUB_MAP; x++) {
         if (x === 0 || y === 0 || x === SUB_MAP - 1 || y === SUB_MAP - 1) {
@@ -964,14 +976,20 @@ button:active { transform: translateY(1px); }
         const r = noise(x, y, state.seed + 2222);
         if (r < 0.08) tiles[y][x] = 3;
         if (r > 0.92) tiles[y][x] = 4;
+        if (r > 0.86 && r < 0.89) {
+          tiles[y][x] = 13;
+          ores.push({ x: x * TILE, y: y * TILE, hp: 3, maxHp: 3 });
+        }
       }
     }
     const center = Math.floor(SUB_MAP / 2);
     tiles[center][center] = 0;
     state.subzoneMap = tiles;
     state.subzoneInteractables = [
-      { id: 'subzone-exit', type: 'subzone_exit', x: center * TILE, y: center * TILE }
+      { id: 'subzone-exit', type: 'subzone_exit', x: center * TILE, y: center * TILE },
+      { id: 'subzone-sage', type: 'subzone_npc', x: center * TILE + TILE * 2, y: center * TILE - TILE * 2, name: `Veilleur ${currentZone()}`, role: 'Sage', dialog: 'La grotte garde un savoir oublié.' }
     ];
+    state.subzoneOres = ores;
     state.subzoneCleared = false;
   };
 
@@ -1043,7 +1061,7 @@ button:active { transform: translateY(1px); }
     return state.subzoneMap[ty][tx];
   };
 
-  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6 || t === 8 || t === 10 || t === 12;
+  const isSolid = (t) => t === 2 || t === 3 || t === 4 || t === 5 || t === 6 || t === 8 || t === 10 || t === 12 || t === 13;
 
   const isSolidAt = (x, y) => {
     if (state.inHub) {
@@ -1630,6 +1648,7 @@ button:active { transform: translateY(1px); }
     state.player.y = state.subzoneReturn.y;
     state.subzoneMap = null;
     state.subzoneInteractables = [];
+    state.subzoneOres = [];
     updateQuestProgress('return', { zone: state.subzoneReturn.zone });
     state.subzoneReturn = null;
     showToast('Retour en surface.');
@@ -2084,7 +2103,7 @@ button:active { transform: translateY(1px); }
     getActiveInteractables().forEach(it => {
       if (it.type === 'orb' && !it.active) return;
       if (it.type === 'altar' && !it.active) return;
-      if (['gate', 'act_gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return', 'fountain', 'bench', 'notice', 'forge', 'library', 'oath', 'relic', 'shrine', 'subzone_gate', 'subzone_exit'].includes(it.type)) {
+      if (['gate', 'act_gate', 'rest', 'altar', 'orb', 'rift_sanctuary', 'rift_return', 'fountain', 'bench', 'notice', 'forge', 'library', 'oath', 'relic', 'shrine', 'subzone_gate', 'subzone_exit', 'subzone_npc'].includes(it.type)) {
         targets.push({ x: it.x, y: it.y, type: it.type });
       }
     });
@@ -2509,12 +2528,14 @@ button:active { transform: translateY(1px); }
     { id: 'fire', name: 'Fireball', effect: 'fire', element: 'fire', cost: 24, cooldown: 2.0, iconKey: 'staff', desc: 'Explosion ardente à l\'impact.' },
     { id: 'flare', name: 'Flare Shot', effect: 'flare', element: 'fire', cost: 20, cooldown: 2.6, iconKey: 'sword', desc: 'Volée incandescente en éventail.' },
     { id: 'ward', name: 'Ward', effect: 'ward', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'ring', desc: 'Armure mystique et soin léger.' },
+    { id: 'life', name: 'Vie', effect: 'life', element: 'holy', cost: 14, cooldown: 3.0, iconKey: 'amulet', desc: 'Restaure un pourcentage de PV.' },
     { id: 'chain', name: 'Chain Lightning', effect: 'chain', element: 'lightning', cost: 28, cooldown: 3.2, iconKey: 'amulet', desc: 'Saut d\'éclairs entre ennemis.' },
     { id: 'poison', name: 'Poison Cloud', effect: 'poison', element: 'poison', cost: 20, cooldown: 3.0, iconKey: 'amulet', desc: 'Néfaste sur la durée.' },
     { id: 'shield', name: 'Shield', effect: 'shield', element: 'arcane', cost: 18, cooldown: 4.0, iconKey: 'helm', desc: 'Bouclier bref, défense accrue.' },
     { id: 'blink', name: 'Blink', effect: 'blink', element: 'arcane', cost: 16, cooldown: 3.2, iconKey: 'boots', desc: 'Téléportation courte.' },
     { id: 'gravity', name: 'Gravity Pull', effect: 'gravity', element: 'arcane', cost: 26, cooldown: 4.5, iconKey: 'helm', desc: 'Ramène les ennemis.' },
     { id: 'summon', name: 'Summon Orb', effect: 'summon', element: 'arcane', cost: 30, cooldown: 5.0, iconKey: 'ring', desc: 'Orbe orbitale protectrice.' },
+    { id: 'mine', name: 'Mine', effect: 'mine', element: 'earth', cost: 12, cooldown: 2.2, iconKey: 'gloves', desc: 'Brise les minerais en grotte.' },
     { id: 'light', name: 'Lumière', effect: 'light', element: 'arcane', cost: 6, cooldown: 2.0, iconKey: 'amulet', desc: 'Halo apaisant contre la brume.' }
   ];
 
@@ -2625,6 +2646,37 @@ button:active { transform: translateY(1px); }
     if (center) center.textContent = `Mana ${state.player.mana.toFixed(0)}`;
   };
 
+  const damageNearestOre = () => {
+    if (!state.inSubzone || !state.subzoneOres.length) return false;
+    let closest = null;
+    let closestDist = Infinity;
+    state.subzoneOres.forEach(ore => {
+      const dx = ore.x - state.player.x;
+      const dy = ore.y - state.player.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < closestDist) {
+        closest = ore;
+        closestDist = dist;
+      }
+    });
+    if (!closest || closestDist > 120 * 120) {
+      showToast('Aucun minerai proche.');
+      return false;
+    }
+    closest.hp -= 1;
+    if (closest.hp <= 0) {
+      const tx = Math.floor(closest.x / TILE);
+      const ty = Math.floor(closest.y / TILE);
+      if (state.subzoneMap && state.subzoneMap[ty]) state.subzoneMap[ty][tx] = 0;
+      state.subzoneOres = state.subzoneOres.filter(o => o !== closest);
+      state.materials += 1;
+      showToast('Minerai extrait +1');
+    } else {
+      showToast(`Minerai ${closest.hp}/${closest.maxHp}`);
+    }
+    return true;
+  };
+
   const castSpell = (spell) => {
     if (state.dead) return;
     const p = state.player;
@@ -2650,6 +2702,10 @@ button:active { transform: translateY(1px); }
           applyLifesteal(dealt);
         }
       });
+      for (let i = 0; i < 18; i++) {
+        const theta = (Math.PI * 2 * i) / 18;
+        state.particles.push({ x: p.x + Math.cos(theta) * 20, y: p.y + Math.sin(theta) * 20, vx: Math.cos(theta) * 30, vy: Math.sin(theta) * 30, life: 0.6, color: '#93c5fd' });
+      }
     } else if (spell.effect === 'ice') {
       state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(angle) * 230, vy: Math.sin(angle) * 230, life: 1.1, dmg: 9 + magicPower * 0.35, size: 4, color: '#38bdf8', shape: 'orb', slow: 1.8, element: 'ice' });
     } else if (spell.effect === 'fire') {
@@ -2692,6 +2748,16 @@ button:active { transform: translateY(1px); }
     } else if (spell.effect === 'ward') {
       applyTimedBonus('def', 3, 4000);
       p.hp = clamp(p.hp + p.hpMax * 0.12, 0, p.hpMax);
+      for (let i = 0; i < 12; i++) {
+        const theta = (Math.PI * 2 * i) / 12;
+        state.particles.push({ x: p.x + Math.cos(theta) * 14, y: p.y + Math.sin(theta) * 14, vx: Math.cos(theta) * 10, vy: Math.sin(theta) * 10, life: 0.5, color: '#c084fc' });
+      }
+    } else if (spell.effect === 'life') {
+      p.hp = clamp(p.hp + p.hpMax * 0.35, 0, p.hpMax);
+      for (let i = 0; i < 10; i++) {
+        const theta = (Math.PI * 2 * i) / 10;
+        state.particles.push({ x: p.x + Math.cos(theta) * 10, y: p.y + Math.sin(theta) * 10, vx: Math.cos(theta) * 12, vy: Math.sin(theta) * 12, life: 0.6, color: '#facc15' });
+      }
     } else if (spell.effect === 'blink') {
       p.x += Math.cos(angle) * 80; p.y += Math.sin(angle) * 80;
     } else if (spell.effect === 'gravity') {
@@ -2708,6 +2774,8 @@ button:active { transform: translateY(1px); }
       } else {
         state.projectiles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 3.0, dmg: 6 + magicPower * 0.2, size: 6, color: '#a855f7', shape: 'orb', orbit: true, element: 'arcane' });
       }
+    } else if (spell.effect === 'mine') {
+      if (!damageNearestOre()) return false;
     } else if (spell.effect === 'light') {
       if (!state.inSubzone) {
         showToast('La lumière n agit qu en grotte.');
@@ -2851,7 +2919,7 @@ button:active { transform: translateY(1px); }
     'Marchand HP': 'Achète des potions de vie (15 or).',
     'Marchand Mana': 'Achète des potions de mana (18 or).',
     'Marchand Équipement': 'Objets rares/épiques contre or.',
-    'Forge': 'Améliore ATK +1 / DEF +1.',
+    'Forge': 'Améliore ATK +1 / DEF +1 (coût: 20 or + 1 matériau).',
     'Revente': 'Vend un objet contre 10 or.',
     'Entraîneur': 'Améliore HP +6 / ATK +1 (coût: 30 or + 2 matériaux).'
   };
@@ -2864,6 +2932,14 @@ button:active { transform: translateY(1px); }
       return 'shop';
     }
     if (npc.role === 'Forge') {
+      const costGold = 20;
+      const costMat = 1;
+      if (state.gold < costGold || state.materials < costMat) {
+        showToast('Ressources insuffisantes');
+        return 'action';
+      }
+      state.gold -= costGold;
+      state.materials -= costMat;
       applyBaseStatDelta({ atk: 1, def: 1 });
       showToast('Forge: +1 ATK / +1 DEF');
       return 'action';
@@ -3088,6 +3164,16 @@ button:active { transform: translateY(1px); }
       updateQuestProgress('visit', { zone });
       return;
     }
+    if (state.inSubzone) {
+      const subNpc = nearest(getActiveInteractables().filter(i => i.type === 'subzone_npc'), NPC_RANGE);
+      if (subNpc) {
+        updateQuestProgress('talk', { npc: subNpc.name, zone });
+        openDialogue(subNpc, subNpc.dialog || 'La grotte répond à ceux qui écoutent.', [
+          { label: 'Écouter', onPick: () => showToast('Le savoir résonne dans la pierre.') }
+        ]);
+        return;
+      }
+    }
     const rest = nearest(getActiveInteractables().filter(i => i.type === 'rest'), REST_RANGE);
     if (state.inHub && rest) {
       state.player.hp = state.player.hpMax;
@@ -3145,6 +3231,22 @@ button:active { transform: translateY(1px); }
       if (state.inHub) {
         renderHubPanel();
         openPanel('hub-panel');
+        return;
+      }
+      const offer = getNpcQuestOffer(nearNpc);
+      if (offer && !state.npcQuestFlags[offer.id]) {
+        openDialogue(nearNpc, offer.lore, [
+          {
+            label: 'Accepter la quête',
+            onPick: () => {
+              const quest = buildNpcSpellQuest(offer, zone);
+              addQuest(quest);
+              state.npcQuestFlags[offer.id] = true;
+              showToast(`Nouvelle quête: ${quest.title}`);
+            }
+          },
+          { label: 'Refuser', onPick: () => showToast('Vous déclinez la quête.') }
+        ]);
         return;
       }
       if (nearNpc.role.toLowerCase().includes('marchand')) {
@@ -3352,6 +3454,7 @@ button:active { transform: translateY(1px); }
           case 10: ctx.fillStyle = '#475569'; break;
           case 11: ctx.fillStyle = '#4ade80'; break;
           case 12: ctx.fillStyle = '#94a3b8'; break;
+          case 13: ctx.fillStyle = '#a16207'; break;
           default: ctx.fillStyle = '#0b0f14';
         }
         ctx.fillRect(px, py, TILE, TILE);
@@ -3384,6 +3487,7 @@ button:active { transform: translateY(1px); }
       else if (it.type === 'forge') ctx.fillStyle = '#f97316';
       else if (it.type === 'library') ctx.fillStyle = '#94a3b8';
       else if (it.type === 'oath') ctx.fillStyle = '#c084fc';
+      else if (it.type === 'subzone_npc') ctx.fillStyle = '#a3e635';
       else return;
       if (it.type === 'act_gate') {
         ctx.beginPath();
@@ -3416,6 +3520,7 @@ button:active { transform: translateY(1px); }
                               : t.type === 'shrine' ? 'Sanctuaire'
                                 : t.type === 'subzone_gate' ? 'Grotte'
                                   : t.type === 'subzone_exit' ? 'Sortie'
+                                    : t.type === 'subzone_npc' ? 'Sage'
                     : 'Potion';
       ctx.strokeStyle = t.type === 'gate' ? '#38bdf8'
         : t.type === 'act_gate' ? '#fbbf24'
@@ -3435,6 +3540,7 @@ button:active { transform: translateY(1px); }
                                   : t.type === 'shrine' ? '#22d3ee'
                                     : t.type === 'subzone_gate' ? '#38bdf8'
                                       : t.type === 'subzone_exit' ? '#facc15'
+                                        : t.type === 'subzone_npc' ? '#a3e635'
                     : '#facc15';
       ctx.beginPath();
       ctx.arc(sx, sy, 10, 0, Math.PI * 2);
@@ -3601,17 +3707,24 @@ button:active { transform: translateY(1px); }
       state.player.weapon = base.weapon;
     }
     if (!state.stats) state.stats = { kills: 0, loot: 0 };
+    if (!state.dynamicQuests) state.dynamicQuests = [];
+    quests = generateQuests();
+    state.dynamicQuests.forEach((quest) => quests.push(quest));
     if (!state.quests || !Object.values(state.quests).some(q => q.steps)) {
       initQuestState();
     }
+    if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.explored) state.explored = {};
     if (!state.zoneCorruption || state.zoneCorruption.length !== zones.length) state.zoneCorruption = Array(zones.length).fill(1);
     if (!state.spellWheel) state.spellWheel = { open: false, options: [] };
     if (!state.selectedSpell) state.selectedSpell = null;
     if (!state.unlockedSpells || !Array.isArray(state.unlockedSpells)) {
-      state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare', 'light'];
+      state.unlockedSpells = ['bolt'];
     }
+    if (!state.npcQuestFlags) state.npcQuestFlags = {};
     if (!state.spellCooldowns) state.spellCooldowns = {};
+    if (!state.subzoneOres) state.subzoneOres = [];
+    if (state.inSubzone && !state.subzoneMap) buildSubzoneMap();
     if (!state.player.manaMax || state.player.manaMax <= 0) {
       const base = classes[state.player.classKey] || classes.blade;
       state.player.manaMax = base.mana;
@@ -4042,7 +4155,7 @@ button:active { transform: translateY(1px); }
   const startGame = (clsKey) => {
     state.player = createPlayer(clsKey);
     applyEquipmentStats();
-    state.unlockedSpells = ['bolt', 'nova', 'ice', 'fire', 'ward', 'flare', 'light'];
+    state.unlockedSpells = ['bolt'];
     state.running = true;
     state.paused = false;
     state.dead = false;
@@ -4050,6 +4163,8 @@ button:active { transform: translateY(1px); }
     state.activeZone = 0;
     state.inHub = false;
     state.caveLightActive = false;
+    state.npcQuestFlags = {};
+    state.dynamicQuests = [];
     state.hubActId = 0;
     state.hubReturnPoint = null;
     state.lastHubReturnPoint = null;
@@ -4072,7 +4187,9 @@ button:active { transform: translateY(1px); }
     state.materials = 0;
     state.gold = 0;
     state.corruptionAbsorbed = 0;
+    quests = generateQuests();
     initQuestState();
+    state.trackedQuestId = null;
     lore.forEach((_, i) => state.loreFound[i] = false);
     buildNpcInstances();
     state.player.inv.push({ type: 'potion', name: 'Potion' }, { type: 'mana_potion', name: 'Potion de Mana' });
@@ -4167,12 +4284,12 @@ button:active { transform: translateY(1px); }
       const idx = Number(e.target.dataset.use);
       const item = state.player.inv[idx];
       if (item && item.type === 'potion') {
-        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.hp = clamp(state.player.hp + state.player.hpMax * 0.35, 0, state.player.hpMax);
         state.player.inv.splice(idx, 1);
         showToast('Potion utilisée');
         renderInventory();
       } else if (item && item.type === 'mana_potion') {
-        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.mana = clamp(state.player.mana + state.player.manaMax * 0.35, 0, state.player.manaMax);
         state.player.inv.splice(idx, 1);
         showToast('Mana restauré');
         renderInventory();
@@ -4246,7 +4363,7 @@ button:active { transform: translateY(1px); }
     if (key === 'h') {
       const idx = state.player.inv.findIndex(it => it.type === 'potion');
       if (idx >= 0) {
-        state.player.hp = clamp(state.player.hp + 40, 0, state.player.hpMax);
+        state.player.hp = clamp(state.player.hp + state.player.hpMax * 0.35, 0, state.player.hpMax);
         state.player.inv.splice(idx, 1);
         showToast('Potion utilisée');
       }
@@ -4254,7 +4371,7 @@ button:active { transform: translateY(1px); }
     if (key === 'm') {
       const idx = state.player.inv.findIndex(it => it.type === 'mana_potion');
       if (idx >= 0) {
-        state.player.mana = clamp(state.player.mana + state.player.manaMax / 3, 0, state.player.manaMax);
+        state.player.mana = clamp(state.player.mana + state.player.manaMax * 0.35, 0, state.player.manaMax);
         state.player.inv.splice(idx, 1);
         showToast('Mana restauré');
       }
